@@ -104,12 +104,25 @@ const seedData = () => ({
   ],
 });
 
+const MESES_NOME = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+const PERGUNTAS_SEGURANCA = [
+  "Qual o nome do seu primeiro animal de estimação?",
+  "Qual o nome da sua mãe?",
+  "Em que cidade você nasceu?",
+  "Outra pergunta (escreva a sua)",
+];
+
 const seedUsers = () => [
-  { id: "u-cate", nome: "Catequista", senha: "emaus123", papel: "catequista", caminhada: null },
-  { id: "u-catecumeno", nome: "Catecúmeno", senha: "emaus123", papel: "aluno", turmaId: "t1", caminhada: caminhadaVazia() },
+  { id: "u-cate", nome: "Catequista", senha: "emaus123", papel: "catequista", caminhada: null, perguntaSeguranca: "Qual o nome da sua mãe?", respostaSeguranca: "teste" },
+  { id: "u-catecumeno", nome: "Catecúmeno", senha: "emaus123", papel: "aluno", turmaId: "t1", caminhada: caminhadaVazia(), perguntaSeguranca: "Qual o nome da sua mãe?", respostaSeguranca: "teste" },
 ];
 
 const caminhadaVazia = () => ({
+  nascimentoDia: "", nascimentoMes: "", nascimentoAno: "", nascimentoLocal: "",
   batismoData: "", batismoLocal: "", padrinhos: "",
   eucaristiaData: "", eucaristiaLocal: "",
   crismaData: "", crismaLocal: "", padrinhosCrisma: "",
@@ -581,7 +594,7 @@ export default function App() {
         {tab === "cronograma" && <Cronograma data={data} persist={persist} role={role} />}
         {tab === "material" && <Material data={data} persist={persist} role={role} session={effectiveSession} />}
         {tab === "caminhada" && (
-          <Caminhada users={users} persistUsers={persistUsers} session={effectiveSession} data={data} turmaAtualId={turmaAtualId} turmas={turmas} />
+          <Caminhada users={users} persistUsers={persistUsers} session={effectiveSession} data={data} persist={persist} turmaAtualId={turmaAtualId} turmas={turmas} />
         )}
         {tab === "avisos" && <Avisos data={data} persist={persist} role={role} />}
         {tab === "comunidade" && <Comunidade data={data} persist={persist} role={role} session={effectiveSession} />}
@@ -602,7 +615,17 @@ function LoginScreen({ users, persistUsers, turmas, onLogin }) {
   const [confirmar, setConfirmar] = useState("");
   const [codigo, setCodigo] = useState("");
   const [codigoTurma, setCodigoTurma] = useState("");
+  const [perguntaSel, setPerguntaSel] = useState(PERGUNTAS_SEGURANCA[0]);
+  const [perguntaCustom, setPerguntaCustom] = useState("");
+  const [resposta, setResposta] = useState("");
   const [erro, setErro] = useState("");
+
+  const [recNome, setRecNome] = useState("");
+  const [recUser, setRecUser] = useState(null);
+  const [recResposta, setRecResposta] = useState("");
+  const [recNovaSenha, setRecNovaSenha] = useState("");
+  const [recConfirmar, setRecConfirmar] = useState("");
+  const [recSucesso, setRecSucesso] = useState(false);
 
   const entrar = () => {
     setErro("");
@@ -628,6 +651,13 @@ function LoginScreen({ users, persistUsers, turmas, onLogin }) {
       setErro("Já existe alguém cadastrado com esse nome.");
       return;
     }
+    const perguntaFinal = perguntaSel === PERGUNTAS_SEGURANCA[PERGUNTAS_SEGURANCA.length - 1]
+      ? perguntaCustom.trim()
+      : perguntaSel;
+    if (!perguntaFinal || !resposta.trim()) {
+      setErro("Escolha uma pergunta de segurança e preencha a resposta — ela é usada para recuperar sua senha caso esqueça.");
+      return;
+    }
     const papel = codigo.trim() === CODIGO_CATEQUISTA ? "catequista" : "aluno";
     let turmaId = null;
     if (papel === "aluno") {
@@ -645,11 +675,105 @@ function LoginScreen({ users, persistUsers, turmas, onLogin }) {
       papel,
       turmaId,
       caminhada: papel === "aluno" ? caminhadaVazia() : null,
+      perguntaSeguranca: perguntaFinal,
+      respostaSeguranca: resposta.trim(),
     };
     const next = [...users, novo];
     await persistUsers(next);
     onLogin({ id: novo.id, nome: novo.nome, papel: novo.papel });
   };
+
+  const abrirRecuperar = () => {
+    setMode("recuperar");
+    setErro("");
+    setRecNome("");
+    setRecUser(null);
+    setRecResposta("");
+    setRecNovaSenha("");
+    setRecConfirmar("");
+    setRecSucesso(false);
+  };
+
+  const buscarConta = () => {
+    setErro("");
+    const user = users.find((u) => u.nome.trim().toLowerCase() === recNome.trim().toLowerCase());
+    if (!user || !user.perguntaSeguranca) {
+      setErro("Não encontramos uma pergunta de segurança para esse nome. Peça para a catequista redefinir sua senha na aba Turma.");
+      setRecUser(null);
+      return;
+    }
+    setRecUser(user);
+  };
+
+  const confirmarRecuperacao = async () => {
+    setErro("");
+    if (recResposta.trim().toLowerCase() !== (recUser.respostaSeguranca || "").trim().toLowerCase()) {
+      setErro("Resposta incorreta.");
+      return;
+    }
+    if (!recNovaSenha.trim()) {
+      setErro("Digite a nova senha.");
+      return;
+    }
+    if (recNovaSenha !== recConfirmar) {
+      setErro("As senhas não conferem.");
+      return;
+    }
+    const next = users.map((u) => (u.id === recUser.id ? { ...u, senha: recNovaSenha } : u));
+    await persistUsers(next);
+    setRecSucesso(true);
+  };
+
+  if (mode === "recuperar") {
+    return (
+      <div style={styles.loginWrap}>
+        <div style={styles.loginCard}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <img src={APP_ICON} alt="Emaús" style={styles.brandIcon} />
+            <span style={styles.brandText}>Emaús</span>
+          </div>
+          <p style={styles.loginSubtitle}>Recuperar senha</p>
+
+          {recSucesso ? (
+            <>
+              <p style={styles.cardBody}>Senha alterada com sucesso! Já pode entrar com a nova senha.</p>
+              <button style={styles.loginButton} onClick={() => { setMode("entrar"); setNome(recUser.nome); setSenha(""); setErro(""); }}>
+                <Lock size={14} /> Ir para o login
+              </button>
+            </>
+          ) : !recUser ? (
+            <>
+              <div style={styles.formRow}>
+                <label style={styles.label}>Nome</label>
+                <input style={styles.input} value={recNome} onChange={(e) => setRecNome(e.target.value)} placeholder="Seu nome" />
+              </div>
+              {erro && <p style={styles.loginErro}>{erro}</p>}
+              <button style={styles.loginButton} onClick={buscarConta}>Buscar conta</button>
+            </>
+          ) : (
+            <>
+              <div style={styles.formRow}>
+                <label style={styles.label}>{recUser.perguntaSeguranca}</label>
+                <input style={styles.input} value={recResposta} onChange={(e) => setRecResposta(e.target.value)} />
+              </div>
+              <div style={styles.formRow}>
+                <label style={styles.label}>Nova senha</label>
+                <input type="password" style={styles.input} value={recNovaSenha} onChange={(e) => setRecNovaSenha(e.target.value)} />
+              </div>
+              <div style={styles.formRow}>
+                <label style={styles.label}>Confirmar nova senha</label>
+                <input type="password" style={styles.input} value={recConfirmar} onChange={(e) => setRecConfirmar(e.target.value)} />
+              </div>
+              {erro && <p style={styles.loginErro}>{erro}</p>}
+              <button style={styles.loginButton} onClick={confirmarRecuperacao}>Redefinir senha</button>
+            </>
+          )}
+
+          <button style={{ ...styles.linkButton, marginTop: 10 }} onClick={() => { setMode("entrar"); setErro(""); }}>← Voltar para o login</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.loginWrap}>
@@ -684,6 +808,10 @@ function LoginScreen({ users, persistUsers, turmas, onLogin }) {
           <input type="password" style={styles.input} value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••" />
         </div>
 
+        {mode === "entrar" && (
+          <button style={styles.linkButton} onClick={abrirRecuperar}>Esqueci minha senha</button>
+        )}
+
         {mode === "cadastrar" && (
           <>
             <div style={styles.formRow}>
@@ -702,6 +830,22 @@ function LoginScreen({ users, persistUsers, turmas, onLogin }) {
             <div style={styles.formRow}>
               <label style={styles.label}>Código de catequista (opcional)</label>
               <input style={styles.input} value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Deixe em branco se você é aluno" />
+            </div>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Pergunta de segurança (para recuperar a senha)</label>
+              <select style={styles.input} value={perguntaSel} onChange={(e) => setPerguntaSel(e.target.value)}>
+                {PERGUNTAS_SEGURANCA.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            {perguntaSel === PERGUNTAS_SEGURANCA[PERGUNTAS_SEGURANCA.length - 1] && (
+              <div style={styles.formRow}>
+                <label style={styles.label}>Escreva sua pergunta</label>
+                <input style={styles.input} value={perguntaCustom} onChange={(e) => setPerguntaCustom(e.target.value)} />
+              </div>
+            )}
+            <div style={styles.formRow}>
+              <label style={styles.label}>Resposta</label>
+              <input style={styles.input} value={resposta} onChange={(e) => setResposta(e.target.value)} />
             </div>
           </>
         )}
@@ -1074,9 +1218,9 @@ function Liturgia({ role }) {
 }
 
 
-function Caminhada({ users, persistUsers, session, data, turmaAtualId, turmas }) {
+function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, turmas }) {
   const me = users.find((u) => u.id === session.id);
-  const [form, setForm] = useState(me?.caminhada || caminhadaVazia());
+  const [form, setForm] = useState({ ...caminhadaVazia(), ...(me?.caminhada || {}) });
   const [saved, setSaved] = useState(false);
   const [verLembranca, setVerLembranca] = useState(false);
   const [resetandoId, setResetandoId] = useState(null);
@@ -1087,6 +1231,7 @@ function Caminhada({ users, persistUsers, session, data, turmaAtualId, turmas })
   const [confirmarSenhaPropria, setConfirmarSenhaPropria] = useState("");
   const [erroSenhaPropria, setErroSenhaPropria] = useState("");
   const [senhaAlterada, setSenhaAlterada] = useState(false);
+  const [encontroPresencaId, setEncontroPresencaId] = useState(null);
 
   const today = todayISO();
   const ordenados = [...data.encontros].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999"));
@@ -1130,6 +1275,21 @@ function Caminhada({ users, persistUsers, session, data, turmaAtualId, turmas })
   if (session.papel === "catequista") {
     const turmaAtual = (turmas || []).find((t) => t.id === turmaAtualId);
     const alunos = users.filter((u) => u.papel === "aluno" && u.turmaId === turmaAtualId);
+    const encontrosOrdenados = [...data.encontros].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999"));
+    const encontroAtual = encontrosOrdenados.find((e) => e.data === today)
+      || [...encontrosOrdenados].reverse().find((e) => e.data && e.data <= today)
+      || encontrosOrdenados[0]
+      || null;
+    const encontroPresenca = encontrosOrdenados.find((e) => e.id === encontroPresencaId) || encontroAtual;
+
+    const marcarPresenca = (alunoId, presente) => {
+      if (!encontroPresenca) return;
+      const nextEncontros = data.encontros.map((e) =>
+        e.id === encontroPresenca.id ? { ...e, presencas: { ...(e.presencas || {}), [alunoId]: presente } } : e
+      );
+      persist({ ...data, encontros: nextEncontros });
+    };
+
     return (
       <div style={styles.stack}>
         <h2 style={styles.sectionTitle}>Caminhada da turma</h2>
@@ -1142,10 +1302,56 @@ function Caminhada({ users, persistUsers, session, data, turmaAtualId, turmas })
             <p style={styles.leitura}>Compartilhe esse código com os catecúmenos — eles usam para se cadastrar nesta turma.</p>
           </div>
         )}
+
+        <div style={styles.card}>
+          <p style={styles.cardEyebrow}>PRESENÇA</p>
+          {encontrosOrdenados.length === 0 ? (
+            <p style={styles.emptyState}>Cadastre um encontro na aba "Caminhada" para poder registrar presença.</p>
+          ) : (
+            <>
+              <div style={styles.formRow}>
+                <label style={styles.label}>Encontro</label>
+                <select
+                  style={styles.input}
+                  value={encontroPresenca?.id || ""}
+                  onChange={(e) => setEncontroPresencaId(e.target.value)}
+                >
+                  {encontrosOrdenados.map((e) => (
+                    <option key={e.id} value={e.id}>{formatDate(e.data)} — {e.tema}</option>
+                  ))}
+                </select>
+              </div>
+              {alunos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
+              {alunos.map((a) => {
+                const presente = encontroPresenca?.presencas?.[a.id];
+                return (
+                  <div key={a.id} style={styles.timelineHead}>
+                    <span style={styles.cardBody}>{a.nome}</span>
+                    <div style={styles.roleToggle}>
+                      <button
+                        style={{ ...styles.rolePill, ...(presente === true ? styles.rolePillActive : {}) }}
+                        onClick={() => marcarPresenca(a.id, true)}
+                      >
+                        Presente
+                      </button>
+                      <button
+                        style={{ ...styles.rolePill, ...(presente === false ? styles.rolePillActive : {}) }}
+                        onClick={() => marcarPresenca(a.id, false)}
+                      >
+                        Ausente
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+
         {alunos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
         {alunos.map((a) => {
           const c = a.caminhada || caminhadaVazia();
-          const preenchido = c.batismoData || c.eucaristiaData || c.crismaData;
+          const preenchido = c.nascimentoDia || c.batismoData || c.eucaristiaData || c.crismaData;
           return (
             <div key={a.id} style={styles.card}>
               <div style={styles.timelineHead}>
@@ -1169,6 +1375,11 @@ function Caminhada({ users, persistUsers, session, data, turmaAtualId, turmas })
                 </div>
               )}
               {!preenchido && <p style={styles.emptyState}>Ainda não preencheu a caminhada.</p>}
+              {c.nascimentoDia && c.nascimentoMes && (
+                <p style={styles.cardBody}>
+                  Nascimento: {c.nascimentoDia} de {MESES_NOME[Number(c.nascimentoMes) - 1]}{c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}{c.nascimentoLocal ? ` — ${c.nascimentoLocal}` : ""}
+                </p>
+              )}
               {c.batismoData && (
                 <p style={styles.cardBody}><Droplet size={13} style={{ marginRight: 4 }} />
                   Batismo: {formatDate(c.batismoData)}{c.batismoLocal ? ` — ${c.batismoLocal}` : ""}{c.padrinhos ? ` · Padrinhos: ${c.padrinhos}` : ""}
@@ -1274,6 +1485,47 @@ function Caminhada({ users, persistUsers, session, data, turmaAtualId, turmas })
           <button style={styles.linkButton} onClick={() => setVerLembranca(true)}>Ver minha lembrança →</button>
         </section>
       )}
+
+      <div style={styles.card}>
+        <p style={styles.cardEyebrow}>MEU NASCIMENTO</p>
+        <div style={styles.formRow}>
+          <label style={styles.label}>Dia</label>
+          <select style={styles.input} value={form.nascimentoDia} onChange={(e) => setForm({ ...form, nascimentoDia: e.target.value })}>
+            <option value="">—</option>
+            {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </div>
+        <div style={styles.formRow}>
+          <label style={styles.label}>Mês</label>
+          <select style={styles.input} value={form.nascimentoMes} onChange={(e) => setForm({ ...form, nascimentoMes: e.target.value })}>
+            <option value="">—</option>
+            {MESES_NOME.map((m, i) => (
+              <option key={m} value={i + 1}>{m}</option>
+            ))}
+          </select>
+        </div>
+        <div style={styles.formRow}>
+          <label style={styles.label}>Ano (opcional — deixe em branco se preferir não informar)</label>
+          <input
+            type="number"
+            style={styles.input}
+            value={form.nascimentoAno}
+            onChange={(e) => setForm({ ...form, nascimentoAno: e.target.value })}
+            placeholder="Ex: 1990"
+          />
+        </div>
+        <div style={styles.formRow}>
+          <label style={styles.label}>Local de nascimento</label>
+          <input
+            style={styles.input}
+            value={form.nascimentoLocal}
+            onChange={(e) => setForm({ ...form, nascimentoLocal: e.target.value })}
+            placeholder="Cidade/estado"
+          />
+        </div>
+      </div>
 
       <div style={styles.card}>
         <p style={styles.cardEyebrow}><Droplet size={13} style={{ marginRight: 4 }} />BATISMO</p>
