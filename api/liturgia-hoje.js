@@ -10,7 +10,7 @@ function hojeBrasil() {
   const dia = partes.find((p) => p.type === "day").value;
   const mes = partes.find((p) => p.type === "month").value;
   const ano = partes.find((p) => p.type === "year").value;
-  return { dia, mes, ano, chave: `${ano}-${mes}-${dia}` };
+  return { dia, mes, ano, chave: `20${ano}-${mes}-${dia}` };
 }
 
 function textoDepoisDoHeading($, heading) {
@@ -36,7 +36,9 @@ export default async function handler(req, res) {
     const encontrarHeading = (texto) =>
       $("h2, h3").filter((_, el) => $(el).text().trim().toLowerCase() === texto.toLowerCase()).first();
 
-    const semanaLiturgica = $("p.has-medium-font-size").first().text().trim();
+    const introHtml = $("p.has-medium-font-size").first().html() || "";
+    const partesIntro = introHtml.split(/<br\s*\/?>/i);
+    const semanaLiturgica = cheerio.load(partesIntro[partesIntro.length - 1] || "").text().trim();
 
     const leituras = [];
     const primeira = encontrarHeading("Primeira leitura");
@@ -51,7 +53,9 @@ export default async function handler(req, res) {
     const evangelho = encontrarHeading("Evangelho");
     if (evangelho.length) leituras.push({ tipo: "Evangelho", referencia: textoDepoisDoHeading($, evangelho) });
 
-    const santoHeading = encontrarHeading("Santo do dia");
+    const santoHeading = $("h2, h3")
+      .filter((_, el) => /^santos? do dia$/i.test($(el).text().trim()))
+      .first();
     const santoDoDia = santoHeading.length ? textoDepoisDoHeading($, santoHeading) : "";
 
     res.status(200).json({
