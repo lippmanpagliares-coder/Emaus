@@ -895,19 +895,6 @@ const TEMPO_DESCRICAO = {
   "Tempo Comum": "O tempo de amadurecer a fé no dia a dia, acompanhando a vida e os ensinamentos de Jesus. A cor litúrgica é o verde.",
 };
 
-async function buscarSantoELeiturasIA(dataISO, dataLabel, jaTemSanto) {
-  const response = await fetch("/api/santo-do-dia", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dataISO, dataLabel, jaTemSanto }),
-  });
-  if (!response.ok) {
-    throw new Error(`Falha ao buscar santo/leituras (${response.status})`);
-  }
-  return response.json();
-}
-
-
 function CalendarioLiturgico() {
   const hoje = new Date();
   const { segmentos, marcadorPct, totalDias, datasChave } = calcularSegmentosAno(hoje.getFullYear(), hoje);
@@ -972,30 +959,7 @@ function CalendarioLiturgico() {
 
 function Liturgia({ role }) {
   const info = calcularInfoLiturgica(new Date());
-  const dataISO = todayISO();
-  const [ia, setIa] = useState({ loading: true, data: null, error: false });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const cacheKey = `liturgia-ia-${dataISO}`;
-      try {
-        const cached = await window.storage.get(cacheKey, true);
-        if (cached && cached.value) {
-          if (!cancelled) setIa({ loading: false, data: JSON.parse(cached.value), error: false });
-          return;
-        }
-      } catch {}
-      try {
-        const resultado = await buscarSantoELeiturasIA(dataISO, todayLongLabel(), !!info.fixo);
-        if (!cancelled) setIa({ loading: false, data: resultado, error: false });
-        window.storage.set(cacheKey, JSON.stringify(resultado), true).catch(() => {});
-      } catch {
-        if (!cancelled) setIa({ loading: false, data: null, error: true });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [dataISO]);
+  const [ia] = useState({ loading: false, data: null, error: false });
 
   const celebracao = info.fixo?.nome || ia.data?.celebracao || "";
   const grau = info.fixo?.grau || ia.data?.grau || "";
