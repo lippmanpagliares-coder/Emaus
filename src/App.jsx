@@ -1081,6 +1081,12 @@ function Caminhada({ users, persistUsers, session, data, turmaAtualId, turmas })
   const [verLembranca, setVerLembranca] = useState(false);
   const [resetandoId, setResetandoId] = useState(null);
   const [novaSenha, setNovaSenha] = useState("");
+  const [alterandoSenha, setAlterandoSenha] = useState(false);
+  const [senhaAtual, setSenhaAtual] = useState("");
+  const [novaSenhaPropria, setNovaSenhaPropria] = useState("");
+  const [confirmarSenhaPropria, setConfirmarSenhaPropria] = useState("");
+  const [erroSenhaPropria, setErroSenhaPropria] = useState("");
+  const [senhaAlterada, setSenhaAlterada] = useState(false);
 
   const today = todayISO();
   const ordenados = [...data.encontros].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999"));
@@ -1095,6 +1101,30 @@ function Caminhada({ users, persistUsers, session, data, turmaAtualId, turmas })
     await persistUsers(next);
     setResetandoId(null);
     setNovaSenha("");
+  };
+
+  const alterarMinhaSenha = async () => {
+    setErroSenhaPropria("");
+    if (senhaAtual !== me?.senha) {
+      setErroSenhaPropria("Senha atual incorreta.");
+      return;
+    }
+    if (!novaSenhaPropria.trim()) {
+      setErroSenhaPropria("Digite a nova senha.");
+      return;
+    }
+    if (novaSenhaPropria !== confirmarSenhaPropria) {
+      setErroSenhaPropria("As senhas não conferem.");
+      return;
+    }
+    const next = users.map((u) => (u.id === session.id ? { ...u, senha: novaSenhaPropria } : u));
+    await persistUsers(next);
+    setSenhaAtual("");
+    setNovaSenhaPropria("");
+    setConfirmarSenhaPropria("");
+    setAlterandoSenha(false);
+    setSenhaAlterada(true);
+    setTimeout(() => setSenhaAlterada(false), 2000);
   };
 
   if (session.papel === "catequista") {
@@ -1186,6 +1216,52 @@ function Caminhada({ users, persistUsers, session, data, turmaAtualId, turmas })
         Um espaço para registrar os passos da sua vida de fé. Preencha o que já viveu — o que faltar, pode
         deixar em branco por enquanto.
       </p>
+
+      <section style={styles.card}>
+        <div style={styles.timelineHead}>
+          <p style={{ ...styles.cardEyebrow, margin: 0 }}>MINHA CONTA</p>
+          {!alterandoSenha && (
+            <button style={styles.linkButton} onClick={() => { setAlterandoSenha(true); setErroSenhaPropria(""); }}>
+              Alterar minha senha
+            </button>
+          )}
+        </div>
+        {!alterandoSenha && senhaAlterada && (
+          <p style={{ ...styles.cardBody, color: GOLD }}>Senha alterada ✓</p>
+        )}
+        {alterandoSenha && (
+          <div style={styles.formCard}>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Senha atual</label>
+              <input type="password" style={styles.input} value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} />
+            </div>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Nova senha</label>
+              <input type="password" style={styles.input} value={novaSenhaPropria} onChange={(e) => setNovaSenhaPropria(e.target.value)} />
+            </div>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Confirmar nova senha</label>
+              <input type="password" style={styles.input} value={confirmarSenhaPropria} onChange={(e) => setConfirmarSenhaPropria(e.target.value)} />
+            </div>
+            {erroSenhaPropria && <p style={styles.loginErro}>{erroSenhaPropria}</p>}
+            <div style={styles.formActions}>
+              <button
+                style={styles.cancelButton}
+                onClick={() => {
+                  setAlterandoSenha(false);
+                  setErroSenhaPropria("");
+                  setSenhaAtual("");
+                  setNovaSenhaPropria("");
+                  setConfirmarSenhaPropria("");
+                }}
+              >
+                <X size={14} /> Cancelar
+              </button>
+              <button style={styles.saveButton} onClick={alterarMinhaSenha}>Salvar nova senha</button>
+            </div>
+          </div>
+        )}
+      </section>
 
       {turmaEncerrada && (
         <section style={styles.card}>
