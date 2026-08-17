@@ -122,7 +122,7 @@ const seedUsers = () => [
 ];
 
 const caminhadaVazia = () => ({
-  nascimentoDia: "", nascimentoMes: "", nascimentoAno: "", nascimentoLocal: "",
+  nascimentoDia: "", nascimentoMes: "", nascimentoAno: "", nascimentoLocal: "", aniversarioPublico: false,
   batismoData: "", batismoLocal: "", padrinhos: "",
   eucaristiaData: "", eucaristiaLocal: "",
   crismaData: "", crismaLocal: "", padrinhosCrisma: "",
@@ -591,13 +591,13 @@ export default function App() {
         )}
         {tab === "inicio" && <Inicio data={data} setTab={setTab} />}
         {tab === "liturgia" && <Liturgia role={role} />}
-        {tab === "cronograma" && <Cronograma data={data} persist={persist} role={role} />}
+        {tab === "cronograma" && <Cronograma data={data} persist={persist} role={role} session={effectiveSession} />}
         {tab === "material" && <Material data={data} persist={persist} role={role} session={effectiveSession} />}
         {tab === "caminhada" && (
           <Caminhada users={users} persistUsers={persistUsers} session={effectiveSession} data={data} persist={persist} turmaAtualId={turmaAtualId} turmas={turmas} />
         )}
         {tab === "avisos" && <Avisos data={data} persist={persist} role={role} />}
-        {tab === "comunidade" && <Comunidade data={data} persist={persist} role={role} session={effectiveSession} />}
+        {tab === "comunidade" && <Comunidade data={data} persist={persist} role={role} session={effectiveSession} users={users} turmaAtualId={turmaAtualId} />}
       </main>
       <footer style={styles.footer}>
         <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: 12, letterSpacing: "0.05em" }}>
@@ -1424,8 +1424,8 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
     <div style={styles.stack}>
       <h2 style={styles.sectionTitle}>Minha caminhada</h2>
       <p style={styles.cardBody}>
-        Um espaço para registrar os passos da sua vida de fé. Preencha o que já viveu — o que faltar, pode
-        deixar em branco por enquanto.
+        Um espaço para registrar os passos da sua vida de fé. Todos os campos abaixo são opcionais —
+        preencha só o que você já viveu e quiser compartilhar; o que faltar, pode deixar em branco.
       </p>
 
       <section style={styles.card}>
@@ -1437,6 +1437,15 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
             </button>
           )}
         </div>
+        {(() => {
+          const encontrosPassados = ordenados.filter((e) => e.data && e.data <= today);
+          const minhasPresencas = encontrosPassados.filter((e) => e.autoPresencas?.[session.id]).length;
+          return (
+            <p style={styles.cardBody}>
+              Presença que você mesmo registrou na aba "Caminhada": {minhasPresencas} de {encontrosPassados.length} encontro{encontrosPassados.length === 1 ? "" : "s"} já realizados. Essa informação é só sua — a catequista não vê essa marcação.
+            </p>
+          );
+        })()}
         {!alterandoSenha && senhaAlterada && (
           <p style={{ ...styles.cardBody, color: GOLD }}>Senha alterada ✓</p>
         )}
@@ -1487,7 +1496,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       )}
 
       <div style={styles.card}>
-        <p style={styles.cardEyebrow}>MEU NASCIMENTO</p>
+        <p style={styles.cardEyebrow}>MEU NASCIMENTO (OPCIONAL)</p>
         <div style={styles.formRow}>
           <label style={styles.label}>Dia</label>
           <select style={styles.input} value={form.nascimentoDia} onChange={(e) => setForm({ ...form, nascimentoDia: e.target.value })}>
@@ -1525,10 +1534,18 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
             placeholder="Cidade/estado"
           />
         </div>
+        <label style={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={!!form.aniversarioPublico}
+            onChange={(e) => setForm({ ...form, aniversarioPublico: e.target.checked })}
+          />
+          Aceito que meu aniversário apareça na Comunidade da turma quando for o meu dia
+        </label>
       </div>
 
       <div style={styles.card}>
-        <p style={styles.cardEyebrow}><Droplet size={13} style={{ marginRight: 4 }} />BATISMO</p>
+        <p style={styles.cardEyebrow}><Droplet size={13} style={{ marginRight: 4 }} />BATISMO (OPCIONAL)</p>
         <div style={styles.formRow}>
           <label style={styles.label}>Data</label>
           <input type="date" style={styles.input} value={form.batismoData} onChange={(e) => setForm({ ...form, batismoData: e.target.value })} />
@@ -1544,7 +1561,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       </div>
 
       <div style={styles.card}>
-        <p style={styles.cardEyebrow}><UtensilsCrossed size={13} style={{ marginRight: 4 }} />PRIMEIRA EUCARISTIA</p>
+        <p style={styles.cardEyebrow}><UtensilsCrossed size={13} style={{ marginRight: 4 }} />PRIMEIRA EUCARISTIA (OPCIONAL)</p>
         <div style={styles.formRow}>
           <label style={styles.label}>Data</label>
           <input type="date" style={styles.input} value={form.eucaristiaData} onChange={(e) => setForm({ ...form, eucaristiaData: e.target.value })} />
@@ -1556,7 +1573,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       </div>
 
       <div style={styles.card}>
-        <p style={styles.cardEyebrow}><Sparkles size={13} style={{ marginRight: 4 }} />CRISMA</p>
+        <p style={styles.cardEyebrow}><Sparkles size={13} style={{ marginRight: 4 }} />CRISMA (OPCIONAL)</p>
         <div style={styles.formRow}>
           <label style={styles.label}>Data</label>
           <input type="date" style={styles.input} value={form.crismaData} onChange={(e) => setForm({ ...form, crismaData: e.target.value })} />
@@ -1628,7 +1645,7 @@ function Lembranca({ nome, caminhada, encontros, onVoltar }) {
   );
 }
 
-function Cronograma({ data, persist, role }) {
+function Cronograma({ data, persist, role, session }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(null);
   const today = todayISO();
@@ -1659,6 +1676,13 @@ function Cronograma({ data, persist, role }) {
 
   const remove = (id) => {
     persist({ ...data, encontros: data.encontros.filter((e) => e.id !== id) });
+  };
+
+  const marcarMinhaPresenca = (encontroId, presente) => {
+    const next = data.encontros.map((e) =>
+      e.id === encontroId ? { ...e, autoPresencas: { ...(e.autoPresencas || {}), [session.id]: presente } } : e
+    );
+    persist({ ...data, encontros: next });
   };
 
   return (
@@ -1713,6 +1737,18 @@ function Cronograma({ data, persist, role }) {
                       <button style={styles.linkButton} onClick={() => baixarICS(e)}>
                         <Calendar size={12} style={{ marginRight: 4 }} />Adicionar ao calendário
                       </button>
+                    )}
+                    {role === "aluno" && (
+                      <div style={{ marginTop: 6 }}>
+                        <label style={styles.checkboxRow}>
+                          <input
+                            type="checkbox"
+                            checked={!!e.autoPresencas?.[session.id]}
+                            onChange={(ev) => marcarMinhaPresenca(e.id, ev.target.checked)}
+                          />
+                          Eu estive presente neste encontro
+                        </label>
+                      </div>
                     )}
                   </>
                 )}
@@ -2117,10 +2153,22 @@ const TIPO_POST = {
   link: { label: "Link", icon: ExternalLink },
 };
 
-function Comunidade({ data, persist, role, session }) {
+function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
   const [texto, setTexto] = useState("");
   const [tipo, setTipo] = useState("geral");
   const [linkUrl, setLinkUrl] = useState("");
+
+  const hoje = new Date();
+  const aniversariantes = (users || []).filter((u) => {
+    const c = u.caminhada;
+    return (
+      u.papel === "aluno" &&
+      u.turmaId === turmaAtualId &&
+      c?.aniversarioPublico &&
+      Number(c.nascimentoDia) === hoje.getDate() &&
+      Number(c.nascimentoMes) === hoje.getMonth() + 1
+    );
+  });
 
   const posts = data.posts || [];
   const ordenados = [...posts].sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
@@ -2160,6 +2208,15 @@ function Comunidade({ data, persist, role, session }) {
         Um mural da turma: compartilhe uma reflexão, um pedido de oração, um link ou uma palavra de ânimo.
         Use @Nome para marcar alguém.
       </p>
+
+      {aniversariantes.length > 0 && (
+        <section style={{ ...styles.card, borderLeft: `3px solid ${GOLD}` }}>
+          <p style={styles.cardEyebrow}>🎉 ANIVERSÁRIO HOJE</p>
+          {aniversariantes.map((a) => (
+            <p key={a.id} style={styles.cardBody}>Hoje é o aniversário de <strong>{a.nome}</strong>! Que tal deixar uma mensagem de carinho?</p>
+          ))}
+        </section>
+      )}
 
       <div style={styles.card}>
         <div style={styles.postTipoRow}>
@@ -2242,6 +2299,11 @@ function StyleSheet() {
         outline: 2px solid #7A2333; outline-offset: 2px;
       }
       a { text-decoration: none; }
+      * { scrollbar-width: thin; scrollbar-color: #7A2333 #E6DCC8; }
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: #E6DCC8; }
+      ::-webkit-scrollbar-thumb { background: #7A2333; border-radius: 8px; border: 2px solid #E6DCC8; }
+      ::-webkit-scrollbar-thumb:hover { background: #5E1A27; }
       @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
       @media print {
         body * { visibility: hidden; }
@@ -2292,7 +2354,14 @@ const styles = {
   certificadoAssinatura: { marginTop: 8 },
   app: { minHeight: "100vh", background: NAVY_DEEP, fontFamily: "'Karla', sans-serif", color: TEXT_LIGHT, display: "flex", flexDirection: "column" },
   loadingScreen: { minHeight: "100vh", background: NAVY, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" },
-  loginWrap: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, minHeight: "100vh" },
+  loginWrap: {
+    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, minHeight: "100vh",
+    backgroundColor: NAVY_DEEP,
+    backgroundImage: `linear-gradient(rgba(242,236,225,0.88), rgba(242,236,225,0.88)), url(${APP_ICON})`,
+    backgroundSize: "auto, 320px 320px",
+    backgroundPosition: "center, center",
+    backgroundRepeat: "no-repeat, no-repeat",
+  },
   loginCard: { background: `linear-gradient(155deg, ${CARD}, ${NAVY_DEEP})`, borderRadius: 18, padding: "26px 22px", border: "1px solid rgba(46,36,23,0.05)", borderTop: "2px solid rgba(122,35,51,0.5)", boxShadow: "0 20px 40px -22px rgba(90,30,42,0.16)", width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 10 },
   loginSubtitle: { fontSize: 12.5, color: TEXT_MUTED, marginTop: -4, marginBottom: 8, fontFamily: "'Courier Prime', monospace", letterSpacing: "0.05em" },
   loginTabs: { display: "flex", background: "rgba(46,36,23,0.05)", borderRadius: 10, padding: 3, gap: 2, marginBottom: 4 },
