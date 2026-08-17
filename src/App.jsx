@@ -2132,7 +2132,7 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
 
       {aniversariantes.length > 0 && (
         <section style={{ ...styles.card, borderLeft: `3px solid ${GOLD}` }}>
-          <p style={styles.cardEyebrow}>🎉 ANIVERSÁRIO HOJE</p>
+          <p style={styles.cardTitle}>Temos um aniversariante hoje! 🎉</p>
           {aniversariantes.map((a) => (
             <p key={a.id} style={styles.cardBody}>Hoje é o aniversário de <strong>{a.nome}</strong>! Que tal deixar uma mensagem de carinho?</p>
           ))}
