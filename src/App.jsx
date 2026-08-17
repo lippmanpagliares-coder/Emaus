@@ -1063,10 +1063,32 @@ function CalendarioLiturgico() {
 
 function Liturgia({ role }) {
   const info = calcularInfoLiturgica(new Date());
-  const [ia] = useState({ loading: false, data: null, error: false });
+  const [ia, setIa] = useState({ loading: true, data: null, error: false });
 
-  const celebracao = info.fixo?.nome || ia.data?.celebracao || "";
-  const grau = info.fixo?.grau || ia.data?.grau || "";
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      const dataISO = todayISO();
+      try {
+        const cacheSnap = await getDoc(doc(db, "liturgiaCache", dataISO));
+        if (cacheSnap.exists()) {
+          if (!cancelado) setIa({ loading: false, data: cacheSnap.data(), error: false });
+          return;
+        }
+        const resposta = await fetch("/api/liturgia-hoje");
+        if (!resposta.ok) throw new Error("falha ao buscar liturgia");
+        const dados = await resposta.json();
+        await setDoc(doc(db, "liturgiaCache", dataISO), dados);
+        if (!cancelado) setIa({ loading: false, data: dados, error: false });
+      } catch {
+        if (!cancelado) setIa({ loading: false, data: null, error: true });
+      }
+    })();
+    return () => { cancelado = true; };
+  }, []);
+
+  const celebracao = info.fixo?.nome || ia.data?.santoDoDia || "";
+  const grau = info.fixo?.grau || "";
 
   return (
     <div style={styles.stack}>
@@ -1104,9 +1126,9 @@ function Liturgia({ role }) {
         ) : (
           <p style={styles.cardBody}>Hoje é dia ferial, sem memória fixa no nosso calendário.</p>
         )}
-        {!info.fixo && role === "catequista" && (
+        {!info.fixo && role === "catequista" && ia.data && (
           <p style={{ ...styles.leitura, marginTop: 8 }}>
-            Celebração gerada automaticamente — confirme no site oficial antes de anunciar em sala.
+            Celebração extraída automaticamente da fonte abaixo — confirme no site oficial antes de anunciar em sala.
           </p>
         )}
       </section>
@@ -1133,6 +1155,12 @@ function Liturgia({ role }) {
           oficial protegida por direitos autorais. Para ler o texto integral, abra um dos links abaixo.
         </p>
         <div style={styles.liturgiaLinks}>
+          {ia.data?.fonte && (
+            <a href={ia.data.fonte} target="_blank" rel="noopener noreferrer" style={styles.liturgiaLink}>
+              <span><Sparkles size={15} /> Liturgia completa — {ia.data.fonteLabel}</span>
+              <ExternalLink size={14} />
+            </a>
+          )}
           <a href="https://www.cnbb.org.br/liturgia-diaria/" target="_blank" rel="noopener noreferrer" style={styles.liturgiaLink}>
             <span><Sun size={15} /> Liturgia Diária — CNBB</span>
             <ExternalLink size={14} />
@@ -1142,6 +1170,11 @@ function Liturgia({ role }) {
             <ExternalLink size={14} />
           </a>
         </div>
+        {ia.data?.fonte && (
+          <p style={{ ...styles.leitura, marginTop: 10, fontStyle: "italic" }}>
+            Referências e santo do dia extraídos de {ia.data.fonteLabel} ({ia.data.fonte}).
+          </p>
+        )}
       </section>
 
       {role === "catequista" && (
