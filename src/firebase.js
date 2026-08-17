@@ -11,6 +11,7 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+// Inicializa o app Firebase com as credenciais definidas nas variáveis de ambiente VITE_FIREBASE_*.
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
