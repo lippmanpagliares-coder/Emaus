@@ -1740,9 +1740,9 @@ function VideoEmbed({ url }) {
   );
 }
 
-function MaterialComentarios({ material, session, onAdd, onRemove, role }) {
+function Comentarios({ item, session, onAdd, onRemove, role }) {
   const [texto, setTexto] = useState("");
-  const comentarios = material.comentarios || [];
+  const comentarios = item.comentarios || [];
 
   const enviar = () => {
     if (!texto.trim()) return;
@@ -1882,8 +1882,8 @@ function Material({ data, persist, role, session }) {
                       </div>
                     )}
 
-                    <MaterialComentarios
-                      material={m}
+                    <Comentarios
+                      item={m}
                       session={session}
                       onAdd={(texto) => addComentario(m.id, texto)}
                       onRemove={(cid) => removeComentario(m.id, cid)}
@@ -2078,8 +2078,12 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
   const [texto, setTexto] = useState("");
   const [tipo, setTipo] = useState("geral");
   const [linkUrl, setLinkUrl] = useState("");
+  const [comentandoId, setComentandoId] = useState(null);
 
   const hoje = new Date();
+  const posts = data.posts || [];
+  const ordenados = [...posts].sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+
   const aniversariantes = (users || []).filter((u) => {
     const c = u.caminhada;
     return (
@@ -2091,8 +2095,28 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
     );
   });
 
-  const posts = data.posts || [];
-  const ordenados = [...posts].sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+  // Registra o aniversário de hoje como um post de verdade (feito pela "Catequista"),
+  // uma única vez por pessoa por ano, para que fique no histórico e dê pra curtir/comentar.
+  useEffect(() => {
+    if (aniversariantes.length === 0) return;
+    const ano = hoje.getFullYear();
+    const faltando = aniversariantes.filter(
+      (a) => !posts.some((p) => p.id === `aniversario-${a.id}-${ano}`)
+    );
+    if (faltando.length === 0) return;
+    const novosPosts = faltando.map((a) => ({
+      id: `aniversario-${a.id}-${ano}`,
+      autor: "Catequista",
+      autorId: null,
+      tipo: "aniversario",
+      texto: `Temos um aniversariante hoje! 🎉\n\nHoje é o aniversário de ${a.nome}! Que tal deixar uma mensagem de carinho?`,
+      criadoEm: new Date().toISOString(),
+      curtidas: [],
+      comentarios: [],
+    }));
+    persist({ ...data, posts: [...novosPosts, ...posts] });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aniversariantes.map((a) => a.id).join(","), turmaAtualId]);
 
   const postar = () => {
     if (!texto.trim()) return;
@@ -2122,6 +2146,29 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
     persist({ ...data, posts: posts.map((p) => (p.id === post.id ? { ...p, curtidas: next } : p)) });
   };
 
+  const addComentario = (postId, textoComentario) => {
+    const novo = {
+      id: `c${Date.now()}`,
+      autor: session?.nome || "Alguém da turma",
+      autorId: session?.id || null,
+      texto: textoComentario,
+      criadoEm: new Date().toISOString(),
+    };
+    persist({
+      ...data,
+      posts: posts.map((p) => (p.id === postId ? { ...p, comentarios: [...(p.comentarios || []), novo] } : p)),
+    });
+  };
+
+  const removeComentario = (postId, comentarioId) => {
+    persist({
+      ...data,
+      posts: posts.map((p) =>
+        p.id === postId ? { ...p, comentarios: (p.comentarios || []).filter((c) => c.id !== comentarioId) } : p
+      ),
+    });
+  };
+
   return (
     <div style={styles.stack}>
       <h2 style={styles.sectionTitle}>Comunidade</h2>
@@ -2129,15 +2176,6 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
         Um mural da turma: compartilhe uma reflexão, um pedido de oração, um link ou uma palavra de ânimo.
         Use @Nome para marcar alguém.
       </p>
-
-      {aniversariantes.length > 0 && (
-        <section style={{ ...styles.card, borderLeft: `3px solid ${GOLD}` }}>
-          <p style={styles.cardTitle}>Temos um aniversariante hoje! 🎉</p>
-          {aniversariantes.map((a) => (
-            <p key={a.id} style={styles.cardBody}>Hoje é o aniversário de <strong>{a.nome}</strong>! Que tal deixar uma mensagem de carinho?</p>
-          ))}
-        </section>
-      )}
 
       <div style={styles.card}>
         <div style={styles.postTipoRow}>
@@ -2178,11 +2216,12 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
 
       <div style={styles.stack}>
         {ordenados.map((post) => {
-          const TipoIcon = TIPO_POST[post.tipo]?.icon || MessageCircle;
+          const ehAniversario = post.tipo === "aniversario";
+          const TipoIcon = ehAniversario ? Sparkles : (TIPO_POST[post.tipo]?.icon || MessageCircle);
           const curtidas = post.curtidas || [];
           const curtiu = curtidas.includes(session?.id);
           return (
-            <div key={post.id} style={styles.card}>
+            <div key={post.id} style={{ ...styles.card, ...(ehAniversario ? { borderLeft: `3px solid ${GOLD}` } : {}) }}>
               <div style={styles.timelineHead}>
                 <p style={styles.cardEyebrow}>
                   <TipoIcon size={12} style={{ marginRight: 5 }} />
@@ -2194,13 +2233,31 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
               </div>
               {post.tipo === "oracao" && <p style={styles.postTipoBadge}><Heart size={12} style={{ marginRight: 4 }} />Pedido de oração</p>}
               <p style={{ ...styles.cardBody, whiteSpace: "pre-wrap" }}>{renderizarTexto(post.texto)}</p>
-              <button
-                style={{ ...styles.postCurtirButton, ...(curtiu ? styles.postCurtirButtonAtivo : {}) }}
-                onClick={() => alternarCurtida(post)}
-              >
-                <Heart size={13} fill={curtiu ? "currentColor" : "none"} />
-                {post.tipo === "oracao" ? "Amém" : "Apoiar"} {curtidas.length > 0 ? `(${curtidas.length})` : ""}
-              </button>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  style={{ ...styles.postCurtirButton, ...(curtiu ? styles.postCurtirButtonAtivo : {}) }}
+                  onClick={() => alternarCurtida(post)}
+                >
+                  <Heart size={13} fill={curtiu ? "currentColor" : "none"} />
+                  {post.tipo === "oracao" ? "Amém" : "Apoiar"} {curtidas.length > 0 ? `(${curtidas.length})` : ""}
+                </button>
+                <button
+                  style={styles.postCurtirButton}
+                  onClick={() => setComentandoId(comentandoId === post.id ? null : post.id)}
+                >
+                  <MessageCircle size={13} />
+                  Comentar {(post.comentarios || []).length > 0 ? `(${post.comentarios.length})` : ""}
+                </button>
+              </div>
+              {comentandoId === post.id && (
+                <Comentarios
+                  item={post}
+                  session={session}
+                  role={role}
+                  onAdd={(textoComentario) => addComentario(post.id, textoComentario)}
+                  onRemove={(cid) => removeComentario(post.id, cid)}
+                />
+              )}
             </div>
           );
         })}
