@@ -13,9 +13,20 @@ function hojeBrasil() {
   return { dia, mes, ano, chave: `20${ano}-${mes}-${dia}` };
 }
 
-function textoDepoisDoHeading($, heading) {
-  const p = heading.nextAll("p").first();
-  return p.text().trim();
+function referenciaDoHeading($, id) {
+  const heading = $(`#${id}`);
+  if (!heading.length) return "";
+  return heading.nextAll("p").first().text().trim();
+}
+
+function santoDoDia($) {
+  const heading = $("#santo-do-dia");
+  if (!heading.length) return "";
+  const proximo = heading.nextAll("p, ul").first();
+  if (proximo.is("ul")) {
+    return proximo.find("li").map((_, li) => $(li).text().trim()).get().join("; ");
+  }
+  return proximo.text().trim();
 }
 
 export default async function handler(req, res) {
@@ -33,36 +44,28 @@ export default async function handler(req, res) {
     const html = await resposta.text();
     const $ = cheerio.load(html);
 
-    const encontrarHeading = (texto) =>
-      $("h2, h3").filter((_, el) => $(el).text().trim().toLowerCase() === texto.toLowerCase()).first();
-
     const introHtml = $("p.has-medium-font-size").first().html() || "";
     const partesIntro = introHtml.split(/<br\s*\/?>/i);
     const semanaLiturgica = cheerio.load(partesIntro[partesIntro.length - 1] || "").text().trim();
 
     const leituras = [];
-    const primeira = encontrarHeading("Primeira leitura");
-    if (primeira.length) leituras.push({ tipo: "Primeira Leitura", referencia: textoDepoisDoHeading($, primeira) });
+    const primeira = referenciaDoHeading($, "primeira-leitura");
+    if (primeira) leituras.push({ tipo: "Primeira Leitura", referencia: primeira });
 
-    const segunda = encontrarHeading("Segunda leitura");
-    if (segunda.length) leituras.push({ tipo: "Segunda Leitura", referencia: textoDepoisDoHeading($, segunda) });
+    const segunda = referenciaDoHeading($, "segunda-leitura");
+    if (segunda) leituras.push({ tipo: "Segunda Leitura", referencia: segunda });
 
-    const salmo = encontrarHeading("Salmo");
-    if (salmo.length) leituras.push({ tipo: "Salmo", referencia: textoDepoisDoHeading($, salmo) });
+    const salmo = referenciaDoHeading($, "salmo");
+    if (salmo) leituras.push({ tipo: "Salmo", referencia: salmo });
 
-    const evangelho = encontrarHeading("Evangelho");
-    if (evangelho.length) leituras.push({ tipo: "Evangelho", referencia: textoDepoisDoHeading($, evangelho) });
-
-    const santoHeading = $("h2, h3")
-      .filter((_, el) => /^santos? do dia$/i.test($(el).text().trim()))
-      .first();
-    const santoDoDia = santoHeading.length ? textoDepoisDoHeading($, santoHeading) : "";
+    const evangelho = referenciaDoHeading($, "evangelho");
+    if (evangelho) leituras.push({ tipo: "Evangelho", referencia: evangelho });
 
     res.status(200).json({
       dataChave: chave,
       semanaLiturgica,
       leituras,
-      santoDoDia,
+      santoDoDia: santoDoDia($),
       fonte: url,
       fonteLabel: "Minha Biblioteca Católica",
     });
