@@ -9,9 +9,7 @@ const STORAGE_KEY_BASE = "catequese-data";
 const TURMAS_KEY = "emaus-turmas";
 const USERS_KEY = "emaus-users";
 const CODIGO_CATEQUISTA = "EMAUS2026";
-// Enquanto o app está em produção/teste, deixe como false para pular a tela de login.
-// Troque para true quando quiser exigir login da turma.
-const EXIGIR_LOGIN = false;
+const EXIGIR_LOGIN = true;
 
 const turmaStorageKey = (turmaId) => `${STORAGE_KEY_BASE}-${turmaId}`;
 
@@ -108,6 +106,7 @@ const seedData = () => ({
 
 const seedUsers = () => [
   { id: "u-cate", nome: "Catequista", senha: "emaus123", papel: "catequista", caminhada: null },
+  { id: "u-catecumeno", nome: "Catecúmeno", senha: "emaus123", papel: "aluno", turmaId: "t1", caminhada: caminhadaVazia() },
 ];
 
 const caminhadaVazia = () => ({
