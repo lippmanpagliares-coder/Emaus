@@ -142,6 +142,15 @@ function todayWeekdayLabel() {
   return diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1);
 }
 
+// Em algumas fontes o indicador ordinal (ª/º) fica quase idêntico a um "a"/"o" comum —
+// aqui ele vira um <sup> de verdade, garantindo que sempre apareça pequeno e elevado.
+function comOrdinalSuperescrito(texto) {
+  if (!texto) return texto;
+  return texto.split(/([ªº])/).map((parte, i) =>
+    parte === "ª" || parte === "º" ? <sup key={i}>{parte}</sup> : parte
+  );
+}
+
 // --- Cálculo litúrgico (datas móveis via algoritmo de Meeus/Jones/Butcher, de domínio público) ---
 function easterDate(year) {
   const a = year % 19, b = Math.floor(year / 100), c = year % 100;
@@ -365,6 +374,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState(false);
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
+  const [previewRole, setPreviewRole] = useState(null);
 
   // Observa o login do Firebase. Quando alguém entra, escuta o próprio perfil em tempo real
   // (isso evita problemas de tempo logo após o cadastro, quando o perfil acaba de ser criado)
@@ -509,6 +519,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  // A aba "Turma" some durante a pré-visualização como catecúmeno (não dá pra simular o
+  // registro pessoal de um aluno específico) — se a pessoa estiver nela, volta pro Início.
+  useEffect(() => {
+    if (tab === "caminhada" && session?.papel === "catequista" && previewRole === "aluno") {
+      setTab("inicio");
+    }
+  }, [tab, session, previewRole]);
+
   if (!authChecked || (session && (loading || !data || !users || !turmas))) {
     return (
       <div style={styles.loadingScreen}>
@@ -531,6 +549,9 @@ export default function App() {
   }
 
   const role = session.papel;
+  // Só a catequista pode ativar a pré-visualização como catecúmeno — nunca o contrário,
+  // então isso nunca dá a um aluno acesso a algo que ele não teria de verdade.
+  const effectiveRole = role === "catequista" ? (previewRole || "catequista") : role;
   const effectiveSession = session;
   const meuUsuario = users.find((u) => u.id === effectiveSession.id);
   const ultimaVisita = meuUsuario?.ultimaVisita || {};
@@ -542,7 +563,12 @@ export default function App() {
     { id: "liturgia", label: "Liturgia", icon: Sun },
     { id: "cronograma", label: "Caminhada", icon: Calendar },
     { id: "material", label: "Material", icon: BookOpen },
-    { id: "caminhada", label: role === "catequista" ? "Turma" : "Minha Caminhada", icon: Compass },
+    // A aba "Turma"/"Minha Caminhada" é presa à identidade de quem está logado (mostra o
+    // registro pessoal de sacramentos), então não dá pra simular como um aluno genérico —
+    // fica escondida durante a pré-visualização.
+    ...(role === "catequista" && previewRole === "aluno"
+      ? []
+      : [{ id: "caminhada", label: role === "catequista" ? "Turma" : "Minha Caminhada", icon: Compass }]),
     { id: "avisos", label: "Avisos", icon: Bell, badge: novosAvisos },
     { id: "comunidade", label: "Comunidade", icon: MessageCircle, badge: novosPosts },
   ];
@@ -556,9 +582,9 @@ export default function App() {
         tab={tab}
         setTab={setTab}
         tabs={tabs}
-        previewRole={null}
-        setPreviewRole={() => {}}
-        role={role}
+        previewRole={role === "catequista" ? effectiveRole : null}
+        setPreviewRole={setPreviewRole}
+        role={effectiveRole}
         turmas={turmas}
         turmaAtualId={turmaAtualId}
         setTurmaAtualId={setTurmaAtualId}
@@ -575,14 +601,14 @@ export default function App() {
         ) : (
           <>
             {tab === "inicio" && <Inicio data={data} setTab={setTab} />}
-            {tab === "liturgia" && <Liturgia role={role} />}
-            {tab === "cronograma" && <Cronograma data={data} persist={persist} role={role} session={effectiveSession} />}
-            {tab === "material" && <Material data={data} persist={persist} role={role} session={effectiveSession} />}
+            {tab === "liturgia" && <Liturgia role={effectiveRole} />}
+            {tab === "cronograma" && <Cronograma data={data} persist={persist} role={effectiveRole} session={effectiveSession} />}
+            {tab === "material" && <Material data={data} persist={persist} role={effectiveRole} session={effectiveSession} />}
             {tab === "caminhada" && (
               <Caminhada users={users} persistUsers={persistUsers} session={effectiveSession} data={data} persist={persist} turmaAtualId={turmaAtualId} turmas={turmas} />
             )}
-            {tab === "avisos" && <Avisos data={data} persist={persist} role={role} />}
-            {tab === "comunidade" && <Comunidade data={data} persist={persist} role={role} session={effectiveSession} users={users} turmaAtualId={turmaAtualId} />}
+            {tab === "avisos" && <Avisos data={data} persist={persist} role={effectiveRole} />}
+            {tab === "comunidade" && <Comunidade data={data} persist={persist} role={effectiveRole} session={effectiveSession} users={users} turmaAtualId={turmaAtualId} />}
           </>
         )}
       </main>
@@ -1270,7 +1296,7 @@ function Liturgia({ role }) {
         <h2 style={styles.sectionTitle}>Liturgia do dia</h2>
         <p style={{ ...styles.cardBody, marginTop: 4 }}>{todayDateLabel()}</p>
         <p style={{ ...styles.cardBody, margin: 0 }}>
-          {todayWeekdayLabel()}{semanaResumo && ` da ${semanaResumo}`}
+          {todayWeekdayLabel()}{semanaResumo && <> da {comOrdinalSuperescrito(semanaResumo)}</>}
         </p>
       </div>
 
@@ -1991,10 +2017,10 @@ function Material({ data, persist, role, session }) {
   const [openId, setOpenId] = useState(null);
 
   const startNew = () => {
-    setForm({ id: `m${Date.now()}`, encontroId: data.encontros[0]?.id || "", titulo: "", leitura: "", conteudo: "", paraProximoEncontro: "", videoUrl: "", comentarios: [], anexos: [] });
+    setForm({ id: `m${Date.now()}`, encontroId: data.encontros[0]?.id || "", titulo: "", leitura: "", conteudo: "", paraProximoEncontro: "", videoUrl: "", comentarios: [], anexos: [], fonte: "" });
     setEditing("new");
   };
-  const startEdit = (m) => { setForm({ comentarios: [], anexos: [], ...m }); setEditing(m.id); };
+  const startEdit = (m) => { setForm({ comentarios: [], anexos: [], fonte: "", ...m }); setEditing(m.id); };
   const cancel = () => { setEditing(null); setForm(null); };
 
   const save = () => {
@@ -2099,6 +2125,7 @@ function Material({ data, persist, role, session }) {
                         ))}
                       </div>
                     )}
+                    {m.fonte && <p style={{ ...styles.leitura, marginTop: 8 }}>Fonte: {m.fonte}</p>}
 
                     <Comentarios
                       item={m}
@@ -2208,6 +2235,15 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
           <Upload size={14} /> {enviando ? "Enviando..." : "Adicionar arquivo"}
           <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={handleFile} disabled={enviando} />
         </label>
+      </div>
+      <div style={styles.formRow}>
+        <label style={styles.label}>Fonte do documento (opcional)</label>
+        <input
+          style={styles.input}
+          value={form.fonte || ""}
+          onChange={(e) => setForm({ ...form, fonte: e.target.value })}
+          placeholder="Ex: Catecismo da Igreja Católica, nº 1213"
+        />
       </div>
       <div style={styles.formActions}>
         <button style={styles.cancelButton} onClick={onCancel}><X size={14} /> Cancelar</button>
