@@ -1,4 +1,4 @@
-const CACHE_NAME = "emaus-v1";
+const CACHE_NAME = "emaus-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -16,7 +16,10 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   event.respondWith(
-    fetch(event.request)
+    // "no-store" força ir sempre até a rede de verdade, ignorando o cache HTTP do
+    // navegador — sem isso, o navegador podia devolver uma versão antiga da própria
+    // página sem a gente perceber, mesmo com internet normal.
+    fetch(event.request, { cache: "no-store" })
       .then((response) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
