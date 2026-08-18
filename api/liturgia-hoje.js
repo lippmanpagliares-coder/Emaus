@@ -19,14 +19,23 @@ function referenciaDoHeading($, id) {
   return heading.nextAll("p").first().text().trim();
 }
 
+function nomeLimpo(texto) {
+  // Mantém só o nome do santo, sem o descritivo em minúsculo ("...,  santo e mártir")
+  // nem a data entre parênteses ("(c. 287–305)").
+  return texto
+    .replace(/\([^)]*\)/g, "")
+    .split(",")[0]
+    .trim();
+}
+
 function santoDoDia($) {
   const heading = $("#santo-do-dia");
   if (!heading.length) return "";
   const proximo = heading.nextAll("p, ul").first();
   if (proximo.is("ul")) {
-    return proximo.find("li").map((_, li) => $(li).text().trim()).get().join("; ");
+    return proximo.find("li").map((_, li) => nomeLimpo($(li).text())).get().join("; ");
   }
-  return proximo.text().trim();
+  return nomeLimpo(proximo.text());
 }
 
 export default async function handler(req, res) {

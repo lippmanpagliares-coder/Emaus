@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Flame, Calendar, BookOpen, Bell, Plus, Pencil, Trash2, X, MapPin, Pin,
   Lock, LogOut, User, Droplet, UtensilsCrossed, Sparkles, ExternalLink, Sun, Compass,
@@ -841,7 +841,7 @@ function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewR
           <span style={styles.brandText}>Emaús</span>
         </div>
         <div style={styles.userBox}>
-          <span style={styles.userName}><User size={13} /> {session.nome}</span>
+          <span style={styles.userName}><User size={13} style={{ flexShrink: 0 }} /> <span style={styles.userNameText}>{session.nome}</span></span>
           {onLogout && <button style={styles.logoutButton} onClick={onLogout}><LogOut size={13} /></button>}
         </div>
       </div>
@@ -851,7 +851,7 @@ function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewR
           {editando ? (
             <>
               <input
-                style={{ ...styles.input, flex: 1 }}
+                style={{ ...styles.input, flex: "1 1 140px", minWidth: 0 }}
                 value={nomeEdicao}
                 onChange={(e) => setNomeEdicao(e.target.value)}
                 autoFocus
@@ -874,7 +874,7 @@ function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewR
           ) : (
             <>
               <input
-                style={{ ...styles.input, flex: 1 }}
+                style={{ ...styles.input, flex: "1 1 140px", minWidth: 0 }}
                 placeholder="Ex: Turma 2027"
                 value={nomeNovaTurma}
                 onChange={(e) => setNomeNovaTurma(e.target.value)}
@@ -2112,6 +2112,38 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
   const [tipo, setTipo] = useState("geral");
   const [linkUrl, setLinkUrl] = useState("");
   const [comentandoId, setComentandoId] = useState(null);
+  const [sugestoesMencao, setSugestoesMencao] = useState([]);
+  const textareaRef = useRef(null);
+
+  const membrosTurma = (users || []).filter((u) => u.papel === "catequista" || u.turmaId === turmaAtualId);
+
+  const detectarMencao = (valor, cursor) => {
+    const antesDoCursor = valor.slice(0, cursor);
+    const match = antesDoCursor.match(/@([^\s@]*)$/);
+    if (!match) {
+      setSugestoesMencao([]);
+      return;
+    }
+    const busca = match[1].toLowerCase();
+    const nomes = membrosTurma
+      .filter((u) => u.id !== session?.id && u.nome.toLowerCase().includes(busca))
+      .slice(0, 5);
+    setSugestoesMencao(nomes);
+  };
+
+  const escolherMencao = (nome) => {
+    const cursor = textareaRef.current?.selectionStart ?? texto.length;
+    const antes = texto.slice(0, cursor).replace(/@([^\s@]*)$/, `@${nome} `);
+    const depois = texto.slice(cursor);
+    const novoTexto = antes + depois;
+    setTexto(novoTexto);
+    setSugestoesMencao([]);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      const pos = antes.length;
+      textareaRef.current?.setSelectionRange(pos, pos);
+    });
+  };
 
   const hoje = new Date();
   const posts = data.posts || [];
@@ -2222,18 +2254,32 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
             </button>
           ))}
         </div>
-        <textarea
-          style={{ ...styles.input, minHeight: 70, marginTop: 10 }}
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          placeholder={
-            tipo === "oracao"
-              ? "Compartilhe seu pedido de oração..."
-              : tipo === "link"
-              ? "Uma palavra sobre o link que você vai compartilhar..."
-              : "O que você quer compartilhar com a turma?"
-          }
-        />
+        <div style={{ position: "relative" }}>
+          <textarea
+            ref={textareaRef}
+            style={{ ...styles.input, minHeight: 70, marginTop: 10 }}
+            value={texto}
+            onChange={(e) => { setTexto(e.target.value); detectarMencao(e.target.value, e.target.selectionStart); }}
+            onKeyUp={(e) => detectarMencao(e.target.value, e.target.selectionStart)}
+            onBlur={() => setTimeout(() => setSugestoesMencao([]), 150)}
+            placeholder={
+              tipo === "oracao"
+                ? "Compartilhe seu pedido de oração..."
+                : tipo === "link"
+                ? "Uma palavra sobre o link que você vai compartilhar..."
+                : "O que você quer compartilhar com a turma?"
+            }
+          />
+          {sugestoesMencao.length > 0 && (
+            <div style={styles.mencaoDropdown}>
+              {sugestoesMencao.map((u) => (
+                <button key={u.id} type="button" style={styles.mencaoItem} onClick={() => escolherMencao(u.nome)}>
+                  {u.nome}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {tipo === "link" && (
           <input
             style={{ ...styles.input, marginTop: 8 }}
@@ -2352,19 +2398,19 @@ const styles = {
   calendarioLegendaItem: { display: "flex", alignItems: "center", gap: 6, fontSize: FS.sm, color: TEXT_MUTED },
   calendarioLegendaCor: { width: 10, height: 10, borderRadius: 3, display: "inline-block", border: "1px solid rgba(46,36,23,0.25)" },
   calendarioDatasChave: { marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(46,36,23,0.08)" },
-  calendarioSubtitulo: { fontFamily: "'Courier Prime', monospace", fontSize: FS.xs, letterSpacing: "0.08em", color: GOLD, margin: "0 0 8px" },
+  calendarioSubtitulo: { fontFamily: "'Karla', sans-serif", fontWeight: 700, fontSize: FS.xs, letterSpacing: "0.06em", color: GOLD, margin: "0 0 8px" },
   calendarioDataLinha: { display: "flex", justifyContent: "space-between", fontSize: FS.base, color: "rgba(46,36,23,0.85)", padding: "4px 0", borderBottom: "1px solid rgba(46,36,23,0.05)" },
   calendarioDataValor: { color: TEXT_LIGHT, fontFamily: "'Courier Prime', monospace", fontSize: FS.sm },
   certificado: { background: `linear-gradient(160deg, ${CARD}, ${NAVY_DEEP})`, border: `2px solid ${GOLD}`, borderRadius: R.card, padding: "32px 26px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 6 },
   certificadoIcon: { width: 56, height: 56, borderRadius: R.box, objectFit: "cover", marginBottom: 6 },
-  certificadoEyebrow: { fontFamily: "'Courier Prime', monospace", fontSize: FS.xs, letterSpacing: "0.12em", color: GOLD, margin: 0 },
+  certificadoEyebrow: { fontFamily: "'Karla', sans-serif", fontWeight: 700, fontSize: FS.xs, letterSpacing: "0.06em", color: GOLD, margin: 0 },
   certificadoTitulo: { fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: FS.hero, margin: "8px 0 2px" },
   certificadoNome: { fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: FS.xl, color: GOLD, margin: "0 0 16px" },
   certificadoTexto: { fontSize: FS.md, lineHeight: 1.7, color: "rgba(46,36,23,0.9)", maxWidth: 440 },
   certificadoAviso: { fontSize: FS.sm, fontStyle: "italic", lineHeight: 1.6, color: TEXT_MUTED, maxWidth: 440, marginTop: 10, borderTop: "1px solid rgba(46,36,23,0.1)", paddingTop: 12 },
   certificadoMensagem: { fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic", fontWeight: 500, fontSize: FS.lg, lineHeight: 1.6, color: GOLD, maxWidth: 440, marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(122,35,51,0.3)" },
   certificadoSacramentos: { marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(122,35,51,0.3)", width: "100%" },
-  certificadoSubtitulo: { fontFamily: "'Courier Prime', monospace", fontSize: FS.xs, letterSpacing: "0.1em", color: GOLD, margin: "0 0 8px" },
+  certificadoSubtitulo: { fontFamily: "'Karla', sans-serif", fontWeight: 700, fontSize: FS.xs, letterSpacing: "0.06em", color: GOLD, margin: "0 0 8px" },
   certificadoLinha: { fontSize: FS.md, color: "rgba(46,36,23,0.9)", margin: "4px 0" },
   certificadoRodape: { display: "flex", flexDirection: "column", gap: 6, marginTop: 22, fontSize: FS.sm, color: TEXT_MUTED },
   certificadoAssinatura: { marginTop: 8 },
@@ -2387,15 +2433,20 @@ const styles = {
   loginErro: { color: "#E8927C", fontSize: FS.sm, margin: 0 },
   loginNote: { fontSize: FS.sm, color: TEXT_MUTED, lineHeight: 1.5, marginTop: 4 },
   header: { position: "sticky", top: 0, zIndex: 10, background: "rgba(242,236,225,0.82)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", borderBottom: "1px solid rgba(122,35,51,0.2)" },
-  headerTop: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px 10px" },
-  brand: { display: "flex", alignItems: "center", gap: 8 },
+  headerTop: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px 10px", gap: 10 },
+  brand: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0 },
   brandIcon: { width: 26, height: 26, borderRadius: R.icon, objectFit: "cover", flexShrink: 0 },
   loadingIcon: { width: 64, height: 64, borderRadius: R.box + 4, objectFit: "cover" },
   brandText: { fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: FS.xl, letterSpacing: "0.01em" },
-  userBox: { display: "flex", alignItems: "center", gap: 8 },
-  userName: { display: "flex", alignItems: "center", gap: 6, fontSize: FS.sm, color: TEXT_MUTED },
-  logoutButton: { background: "rgba(46,36,23,0.06)", border: "none", borderRadius: R.icon, padding: 7, color: TEXT_LIGHT, cursor: "pointer", display: "flex" },
-  nav: { display: "flex", overflowX: "auto", padding: "0 12px", gap: 4 },
+  userBox: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
+  userName: { display: "flex", alignItems: "center", gap: 6, fontSize: FS.sm, color: TEXT_MUTED, minWidth: 0, overflow: "hidden" },
+  userNameText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  logoutButton: { background: "rgba(46,36,23,0.06)", border: "none", borderRadius: R.icon, padding: 7, color: TEXT_LIGHT, cursor: "pointer", display: "flex", flexShrink: 0 },
+  nav: {
+    display: "flex", overflowX: "auto", padding: "0 12px", gap: 4,
+    maskImage: "linear-gradient(to right, black calc(100% - 24px), transparent 100%)",
+    WebkitMaskImage: "linear-gradient(to right, black calc(100% - 24px), transparent 100%)",
+  },
   navButton: { display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "none", color: TEXT_MUTED, padding: "10px 12px", fontSize: FS.base, fontWeight: 500, cursor: "pointer", borderBottom: "2px solid transparent", whiteSpace: "nowrap" },
   navButtonActive: { color: GOLD, borderBottom: `2px solid ${GOLD}` },
   navBadge: { position: "absolute", top: -6, right: -8, background: GOLD, color: ON_ACCENT, fontSize: FS.tiny, fontWeight: 700, borderRadius: R.pill, minWidth: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px", lineHeight: 1 },
@@ -2404,8 +2455,8 @@ const styles = {
   errorBanner: { background: "rgba(181,84,31,0.2)", border: "1px solid #B5541F", borderRadius: R.button, padding: "10px 14px", fontSize: FS.base, marginBottom: 14 },
   previewBanner: { background: "rgba(122,35,51,0.15)", border: "1px dashed rgba(122,35,51,0.5)", borderRadius: R.button, padding: "10px 14px", fontSize: FS.sm, marginBottom: 14, color: TEXT_LIGHT },
   previewRow: { display: "flex", alignItems: "center", gap: 8, padding: "0 18px 10px" },
-  turmaRow: { display: "flex", alignItems: "center", gap: 8, padding: "0 18px 10px" },
-  turmaSelect: { flex: 1, background: "transparent", border: `1px solid rgba(122,35,51,0.3)`, borderRadius: R.icon, padding: "6px 8px", color: TEXT_LIGHT, fontSize: FS.base, fontFamily: "'Karla', sans-serif" },
+  turmaRow: { display: "flex", alignItems: "center", gap: 8, padding: "0 18px 10px", flexWrap: "wrap" },
+  turmaSelect: { flex: "1 1 140px", minWidth: 0, background: "transparent", border: `1px solid rgba(122,35,51,0.3)`, borderRadius: R.icon, padding: "6px 8px", color: TEXT_LIGHT, fontSize: FS.base, fontFamily: "'Karla', sans-serif" },
   turmaAddButton: { display: "flex", alignItems: "center", gap: 4, background: "transparent", border: `1px dashed rgba(122,35,51,0.4)`, color: GOLD, borderRadius: R.icon, padding: "6px 10px", fontSize: FS.sm, cursor: "pointer", whiteSpace: "nowrap" },
   previewLabel: { fontSize: FS.sm, color: TEXT_MUTED, fontFamily: "'Courier Prime', monospace", letterSpacing: "0.05em" },
   roleToggle: { display: "flex", background: "rgba(46,36,23,0.05)", borderRadius: R.button, padding: 3, gap: 2 },
@@ -2416,7 +2467,7 @@ const styles = {
   heroHorizonte: { position: "absolute", inset: 0, overflow: "hidden" },
   heroSol: { position: "absolute", bottom: 36, left: "50%", transform: "translateX(-50%)", width: 130, height: 130, borderRadius: "50%", background: `radial-gradient(circle, rgba(201,162,75,0.55), rgba(201,162,75,0.15) 55%, transparent 75%)` },
   heroEstrada: { position: "absolute", bottom: 0, left: 0, width: "100%", height: "100%" },
-  heroEyebrow: { fontFamily: "'Courier Prime', monospace", fontSize: FS.xs, letterSpacing: "0.12em", color: GOLD, marginBottom: 10 },
+  heroEyebrow: { fontFamily: "'Karla', sans-serif", fontWeight: 700, fontSize: FS.xs, letterSpacing: "0.06em", color: GOLD, marginBottom: 10 },
   heroTitle: { fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: FS.mega, lineHeight: 1.25, margin: 0, position: "relative" },
   candleRow: { display: "flex", alignItems: "center", gap: 4, marginTop: 20, flexWrap: "wrap" },
   candleLabel: { fontSize: FS.sm, color: TEXT_MUTED, marginLeft: 8, fontFamily: "'Courier Prime', monospace" },
@@ -2428,7 +2479,7 @@ const styles = {
     borderTop: `4px solid ${GOLD}`,
     boxShadow: "0 16px 32px -16px rgba(90,30,42,0.18)",
   },
-  cardEyebrow: { fontFamily: "'Courier Prime', monospace", fontSize: FS.xs, letterSpacing: "0.1em", color: GOLD, margin: "0 0 6px", display: "flex", alignItems: "center" },
+  cardEyebrow: { fontFamily: "'Karla', sans-serif", fontWeight: 700, fontSize: FS.xs, letterSpacing: "0.06em", color: GOLD, margin: "0 0 6px", display: "flex", alignItems: "center" },
   cardTitle: { fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: FS.display, margin: "0 0 8px" },
   cardBody: { fontSize: FS.md, lineHeight: 1.6, color: "rgba(46,36,23,0.85)", margin: "8px 0 0", display: "flex", alignItems: "center", flexWrap: "wrap" },
   metaRow: { display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 4 },
@@ -2462,17 +2513,19 @@ const styles = {
   checkboxRow: { display: "flex", alignItems: "center", gap: 8, fontSize: FS.base, color: TEXT_MUTED },
   leitura: { fontSize: FS.base, fontStyle: "italic", color: TEXT_MUTED, margin: "0 0 6px" },
   paraCasaBox: { marginTop: 14, padding: "12px 14px", background: "rgba(122,35,51,0.06)", border: "1px dashed rgba(122,35,51,0.4)", borderRadius: R.box },
-  paraCasaEyebrow: { fontFamily: "'Courier Prime', monospace", fontSize: FS.xs, letterSpacing: "0.08em", color: GOLD, margin: "0 0 4px", display: "flex", alignItems: "center" },
+  paraCasaEyebrow: { fontFamily: "'Karla', sans-serif", fontWeight: 700, fontSize: FS.xs, letterSpacing: "0.06em", color: GOLD, margin: "0 0 4px", display: "flex", alignItems: "center" },
   videoWrap: { position: "relative", width: "100%", paddingTop: "56.25%", marginTop: 14, borderRadius: R.button, overflow: "hidden", background: "#000" },
   videoFrame: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" },
   comentariosBox: { marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(122,35,51,0.15)" },
   comentarioItem: { padding: "8px 0", borderBottom: "1px solid rgba(122,35,51,0.08)" },
   comentarioAutor: { fontSize: FS.sm, fontWeight: 600, color: TEXT_LIGHT },
   comentarioForm: { display: "flex", flexDirection: "column", gap: 8, marginTop: 10 },
+  mencaoDropdown: { position: "absolute", left: 0, right: 0, top: "100%", marginTop: 4, background: CARD, border: `1px solid rgba(122,35,51,0.3)`, borderRadius: R.icon, boxShadow: "0 12px 24px -12px rgba(90,30,42,0.3)", zIndex: 5, overflow: "hidden" },
+  mencaoItem: { display: "block", width: "100%", textAlign: "left", background: "transparent", border: "none", padding: "8px 12px", fontSize: FS.base, color: TEXT_LIGHT, cursor: "pointer" },
   postTipoRow: { display: "flex", gap: 6, flexWrap: "wrap" },
   postTipoPill: { display: "flex", alignItems: "center", gap: 6, border: "1px solid rgba(122,35,51,0.3)", background: "transparent", color: TEXT_MUTED, borderRadius: R.pill, padding: "5px 11px", fontSize: FS.sm, cursor: "pointer" },
   postTipoPillActive: { background: GOLD, color: ON_ACCENT, borderColor: GOLD, fontWeight: 600 },
-  postTipoBadge: { display: "flex", alignItems: "center", fontSize: FS.sm, color: GOLD, fontFamily: "'Courier Prime', monospace", margin: "8px 0 0" },
+  postTipoBadge: { display: "flex", alignItems: "center", fontSize: FS.sm, color: GOLD, fontFamily: "'Karla', sans-serif", fontWeight: 700, margin: "8px 0 0" },
   postLink: { color: GOLD, textDecoration: "underline", wordBreak: "break-all" },
   postMencao: { color: GOLD, fontWeight: 600 },
   postCurtirButton: { display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(122,35,51,0.25)", color: TEXT_MUTED, borderRadius: R.pill, padding: "6px 12px", fontSize: FS.sm, marginTop: 12, cursor: "pointer" },
