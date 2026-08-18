@@ -1724,6 +1724,28 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
         )}
 
         <div style={styles.card}>
+          <p style={styles.cardEyebrow}>CATECÚMENOS DA TURMA</p>
+          {alunos.length === 0 ? (
+            <p style={styles.emptyState}>Nenhum catecúmeno cadastrado ainda.</p>
+          ) : (
+            <div style={styles.stack}>
+              {[...alunos].sort((a, b) => a.nome.localeCompare(b.nome)).map((a) => {
+                const c = a.caminhada || {};
+                const nascimento = c.nascimentoDia && c.nascimentoMes
+                  ? `${c.nascimentoDia} de ${MESES_NOME[Number(c.nascimentoMes) - 1]}${c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}`
+                  : "Data de nascimento não informada";
+                return (
+                  <div key={a.id} style={styles.timelineHead}>
+                    <span style={styles.cardBody}>{a.nome}</span>
+                    <span style={{ fontSize: FS.sm, color: TEXT_MUTED }}>{nascimento}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div style={styles.card}>
           <p style={styles.cardEyebrow}>CALENDÁRIO DE AULAS</p>
           <p style={styles.cardBody}>
             {diasAula.length > 0
