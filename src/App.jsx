@@ -133,8 +133,10 @@ function todayISO() {
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 }
 
-function todayLongLabel() {
-  return new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+function todayDateWeekdayLabel() {
+  const data = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  const diaSemana = new Date().toLocaleDateString("pt-BR", { weekday: "long" });
+  return `${data}, ${diaSemana}`;
 }
 
 // --- Cálculo litúrgico (datas móveis via algoritmo de Meeus/Jones/Butcher, de domínio público) ---
@@ -1257,12 +1259,15 @@ function Liturgia({ role }) {
   const fonteAtrasada = !!(ia.data?.dataFonte && ia.data.dataFonte !== todayISO());
   const celebracao = info.fixo?.nome || (!fonteAtrasada ? ia.data?.santoDoDia : "") || "";
   const grau = info.fixo?.grau || "";
+  const semanaResumo = !fonteAtrasada && ia.data?.semanaLiturgica ? ia.data.semanaLiturgica.split(",")[0].trim() : "";
 
   return (
     <div style={styles.stack}>
       <div>
         <h2 style={styles.sectionTitle}>Liturgia do dia</h2>
-        <p style={{ ...styles.cardBody, marginTop: 4 }}>{todayLongLabel()}</p>
+        <p style={{ ...styles.cardBody, marginTop: 4 }}>
+          {todayDateWeekdayLabel()}{semanaResumo && ` da ${semanaResumo}`}
+        </p>
       </div>
 
       <section style={styles.card}>
