@@ -1,12 +1,13 @@
 import * as cheerio from "cheerio";
 
-function hojeBrasil() {
+function dataBrasil(offsetDias) {
+  const alvo = new Date(Date.now() - offsetDias * 86400000);
   const partes = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
     day: "2-digit",
     month: "2-digit",
     year: "2-digit",
-  }).formatToParts(new Date());
+  }).formatToParts(alvo);
   const dia = partes.find((p) => p.type === "day").value;
   const mes = partes.find((p) => p.type === "month").value;
   const ano = partes.find((p) => p.type === "year").value;
@@ -38,47 +39,58 @@ function santoDoDia($) {
   return nomeLimpo(proximo.text());
 }
 
+// A fonte às vezes demora alguns dias para publicar a página do dia — tenta
+// hoje e, se ainda não existir, volta dia a dia até achar a edição mais
+// recente já publicada (deixando claro pro cliente qual data foi usada).
+const MAX_DIAS_ATRAS = 5;
+
 export default async function handler(req, res) {
-  const { dia, mes, ano, chave } = hojeBrasil();
-  const url = `https://bibliotecacatolica.com.br/blog/liturgia-diaria/${dia}-${mes}-${ano}/`;
+  const { chave: dataChave } = dataBrasil(0);
 
-  try {
-    const resposta = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; EmausApp/1.0)" },
-    });
-    if (!resposta.ok) {
-      res.status(502).json({ error: `Fonte retornou ${resposta.status}` });
+  for (let offset = 0; offset <= MAX_DIAS_ATRAS; offset++) {
+    const { dia, mes, ano, chave: dataFonte } = dataBrasil(offset);
+    const url = `https://bibliotecacatolica.com.br/blog/liturgia-diaria/${dia}-${mes}-${ano}/`;
+
+    try {
+      const resposta = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; EmausApp/1.0)" },
+      });
+      if (!resposta.ok) continue;
+
+      const html = await resposta.text();
+      const $ = cheerio.load(html);
+
+      const introHtml = $("p.has-medium-font-size").first().html() || "";
+      const partesIntro = introHtml.split(/<br\s*\/?>/i);
+      const semanaLiturgica = cheerio.load(partesIntro[partesIntro.length - 1] || "").text().trim();
+
+      const leituras = [];
+      const primeira = referenciaDoHeading($, "primeira-leitura");
+      if (primeira) leituras.push({ tipo: "Primeira Leitura", referencia: primeira });
+
+      const segunda = referenciaDoHeading($, "segunda-leitura");
+      if (segunda) leituras.push({ tipo: "Segunda Leitura", referencia: segunda });
+
+      const salmo = referenciaDoHeading($, "salmo");
+      if (salmo) leituras.push({ tipo: "Salmo", referencia: salmo });
+
+      const evangelho = referenciaDoHeading($, "evangelho");
+      if (evangelho) leituras.push({ tipo: "Evangelho", referencia: evangelho });
+
+      res.status(200).json({
+        dataChave,
+        dataFonte,
+        semanaLiturgica,
+        leituras,
+        santoDoDia: santoDoDia($),
+        fonte: url,
+        fonteLabel: "Minha Biblioteca Católica",
+      });
       return;
+    } catch {
+      // tenta o dia anterior
     }
-    const html = await resposta.text();
-    const $ = cheerio.load(html);
-
-    const introHtml = $("p.has-medium-font-size").first().html() || "";
-    const partesIntro = introHtml.split(/<br\s*\/?>/i);
-    const semanaLiturgica = cheerio.load(partesIntro[partesIntro.length - 1] || "").text().trim();
-
-    const leituras = [];
-    const primeira = referenciaDoHeading($, "primeira-leitura");
-    if (primeira) leituras.push({ tipo: "Primeira Leitura", referencia: primeira });
-
-    const segunda = referenciaDoHeading($, "segunda-leitura");
-    if (segunda) leituras.push({ tipo: "Segunda Leitura", referencia: segunda });
-
-    const salmo = referenciaDoHeading($, "salmo");
-    if (salmo) leituras.push({ tipo: "Salmo", referencia: salmo });
-
-    const evangelho = referenciaDoHeading($, "evangelho");
-    if (evangelho) leituras.push({ tipo: "Evangelho", referencia: evangelho });
-
-    res.status(200).json({
-      dataChave: chave,
-      semanaLiturgica,
-      leituras,
-      santoDoDia: santoDoDia($),
-      fonte: url,
-      fonteLabel: "Minha Biblioteca Católica",
-    });
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
   }
+
+  res.status(502).json({ error: "Fonte ainda não publicou nenhuma edição recente" });
 }

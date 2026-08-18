@@ -1241,7 +1241,11 @@ function Liturgia({ role }) {
         const resposta = await fetch("/api/liturgia-hoje");
         if (!resposta.ok) throw new Error("falha ao buscar liturgia");
         const dados = await resposta.json();
-        await setDoc(doc(db, "liturgiaCache", dataISO), dados);
+        // Só guarda em cache quando a fonte já publicou a edição de hoje —
+        // se ela ainda estiver atrasada, cada visita tenta buscar de novo.
+        if (dados.dataFonte === dataISO) {
+          await setDoc(doc(db, "liturgiaCache", dataISO), dados);
+        }
         if (!cancelado) setIa({ loading: false, data: dados, error: false });
       } catch {
         if (!cancelado) setIa({ loading: false, data: null, error: true });
@@ -1250,7 +1254,8 @@ function Liturgia({ role }) {
     return () => { cancelado = true; };
   }, []);
 
-  const celebracao = info.fixo?.nome || ia.data?.santoDoDia || "";
+  const fonteAtrasada = !!(ia.data?.dataFonte && ia.data.dataFonte !== todayISO());
+  const celebracao = info.fixo?.nome || (!fonteAtrasada ? ia.data?.santoDoDia : "") || "";
   const grau = info.fixo?.grau || "";
 
   return (
@@ -1303,6 +1308,11 @@ function Liturgia({ role }) {
         )}
         {ia.error && (
           <p style={styles.cardBody}>Não consegui buscar as referências agora. Use os links abaixo para ver a liturgia completa.</p>
+        )}
+        {fonteAtrasada && ia.data?.leituras?.length > 0 && (
+          <p style={{ ...styles.leitura, margin: "0 0 6px" }}>
+            A fonte ainda não publicou a liturgia de hoje — mostrando a última edição disponível, de {formatDate(ia.data.dataFonte)}.
+          </p>
         )}
         {ia.data?.leituras?.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
