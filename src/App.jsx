@@ -192,6 +192,52 @@ function easterDate(year) {
 const addDays = (date, n) => { const d = new Date(date); d.setDate(d.getDate() + n); return d; };
 const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 const mdKey = (date) => `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+const isoDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+// Feriados nacionais fixos + os mais conhecidos do estado/cidade de São Paulo.
+// Não é uma fonte oficial (pontos facultativos variam ano a ano por decreto local) — serve
+// como sugestão automática, sempre editável pela catequista no calendário de aulas.
+const FERIADOS_FIXOS_BRASIL = [
+  { mes: 1, dia: 1, nome: "Confraternização Universal" },
+  { mes: 4, dia: 21, nome: "Tiradentes" },
+  { mes: 5, dia: 1, nome: "Dia do Trabalho" },
+  { mes: 9, dia: 7, nome: "Independência do Brasil" },
+  { mes: 10, dia: 12, nome: "Nossa Senhora Aparecida" },
+  { mes: 11, dia: 2, nome: "Finados" },
+  { mes: 11, dia: 15, nome: "Proclamação da República" },
+  { mes: 11, dia: 20, nome: "Consciência Negra" },
+  { mes: 12, dia: 25, nome: "Natal" },
+];
+
+const FERIADOS_FIXOS_SP = [
+  { mes: 1, dia: 25, nome: "Aniversário da cidade de São Paulo" },
+  { mes: 7, dia: 9, nome: "Revolução Constitucionalista de 1932" },
+];
+
+function feriadosDoAno(ano) {
+  const mapa = {};
+  for (const { mes, dia, nome } of [...FERIADOS_FIXOS_BRASIL, ...FERIADOS_FIXOS_SP]) {
+    mapa[`${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`] = nome;
+  }
+  const pascoa = easterDate(ano);
+  mapa[isoDate(addDays(pascoa, -48))] = "Carnaval (segunda-feira)";
+  mapa[isoDate(addDays(pascoa, -47))] = "Carnaval (terça-feira)";
+  mapa[isoDate(addDays(pascoa, -2))] = "Sexta-feira Santa";
+  mapa[isoDate(addDays(pascoa, 60))] = "Corpus Christi";
+  return mapa;
+}
+
+// Junta os feriados de todos os anos civis que o período do calendário de aulas atravessa.
+function feriadosNoPeriodo(inicioISO, fimISO) {
+  if (!inicioISO || !fimISO) return {};
+  const anoInicio = Number(inicioISO.slice(0, 4));
+  const anoFim = Number(fimISO.slice(0, 4));
+  let mapa = {};
+  for (let ano = anoInicio; ano <= anoFim; ano++) {
+    mapa = { ...mapa, ...feriadosDoAno(ano) };
+  }
+  return mapa;
+}
 
 // Tabela fixa de solenidades e festas mais conhecidas do calendário romano geral (usado no Brasil).
 // Não é uma lista completa do santoral — para memórias facultativas do dia a dia, usamos a geração
@@ -1432,7 +1478,12 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
 
   const cal = data.calendarioAulas || calendarioAulasVazio();
   const diasAula = gerarDiasAula(cal.inicio, cal.fim, cal.diaSemana);
-  const diasComAula = diasAula.filter((d) => cal.excecoes?.[d] !== false).length;
+  const feriadosPeriodo = feriadosNoPeriodo(cal.inicio, cal.fim);
+  // Sem indicação manual, o dia já vem desmarcado se cair em feriado/ponto facultativo —
+  // a catequista continua podendo marcar "tem aula" mesmo assim, se for o caso da turma dela.
+  const diaTemAulaPadrao = (d) => !feriadosPeriodo[d];
+  const diaTemAula = (d) => (cal.excecoes?.[d] !== undefined ? cal.excecoes[d] : diaTemAulaPadrao(d));
+  const diasComAula = diasAula.filter(diaTemAula).length;
 
   const atualizarCalendario = (patch) => {
     persist({ ...data, calendarioAulas: { ...cal, ...patch } });
@@ -1440,8 +1491,8 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
 
   const alternarDiaAula = (dataISO, temAula) => {
     const excecoes = { ...(cal.excecoes || {}) };
-    if (temAula) delete excecoes[dataISO];
-    else excecoes[dataISO] = false;
+    if (temAula === diaTemAulaPadrao(dataISO)) delete excecoes[dataISO];
+    else excecoes[dataISO] = temAula;
     persist({ ...data, calendarioAulas: { ...cal, excecoes } });
   };
 
@@ -1477,7 +1528,8 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
           <h2 style={styles.sectionTitle}>Calendário de aulas</h2>
           <p style={styles.leitura}>
             Defina o período do ano catequético (em média de maio a abril) e o dia da semana das aulas. O app
-            lista todas as datas — depois é só marcar quais realmente têm aula, tirando férias e feriados.
+            lista todas as datas e já desmarca sozinho os feriados nacionais e de São Paulo/SP (conferir se
+            valem pra sua paróquia) — o resto é só marcar conforme as férias da turma.
           </p>
 
           <div style={styles.card}>
@@ -1508,11 +1560,13 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
             ) : (
               <div style={styles.stack}>
                 {diasAula.map((d) => {
-                  const temAula = cal.excecoes?.[d] !== false;
+                  const temAula = diaTemAula(d);
+                  const feriado = feriadosPeriodo[d];
                   return (
                     <div key={d} style={styles.timelineHead}>
                       <span style={{ ...styles.cardBody, ...(temAula ? {} : { color: TEXT_MUTED, textDecoration: "line-through" }) }}>
                         {formatDate(d)}
+                        {feriado && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, textDecoration: "none", marginLeft: 6 }}>· {feriado}</span>}
                       </span>
                       <label style={styles.checkboxRow}>
                         <input type="checkbox" checked={temAula} onChange={(e) => alternarDiaAula(d, e.target.checked)} />
