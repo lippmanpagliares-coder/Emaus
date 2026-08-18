@@ -2514,14 +2514,14 @@ function StyleSheet() {
       #root { overflow-x: hidden; }
       input, textarea, select, button { font-family: 'Karla', sans-serif; }
       input:focus, textarea:focus, select:focus, button:focus-visible {
-        outline: 2px solid #7A2333; outline-offset: 2px;
+        outline: 2px solid var(--accent); outline-offset: 2px;
       }
       a { text-decoration: none; }
-      * { scrollbar-width: thin; scrollbar-color: #7A2333 #E6DCC8; }
+      * { scrollbar-width: thin; scrollbar-color: var(--accent) #E6DCC8; }
       ::-webkit-scrollbar { width: 10px; height: 10px; }
       ::-webkit-scrollbar-track { background: #E6DCC8; }
-      ::-webkit-scrollbar-thumb { background: #7A2333; border-radius: 8px; border: 2px solid #E6DCC8; }
-      ::-webkit-scrollbar-thumb:hover { background: #5E1A27; }
+      ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 8px; border: 2px solid #E6DCC8; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--accent-light); }
       @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
       @media print {
         body * { visibility: hidden; }
@@ -2582,8 +2582,8 @@ const styles = {
   loginWrap: {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, minHeight: "100vh",
     backgroundColor: NAVY_DEEP,
-    backgroundImage: `linear-gradient(rgba(242,236,225,0.55), rgba(242,236,225,0.55)), url(${APP_ICON})`,
-    backgroundSize: "auto, 420px 420px",
+    backgroundImage: `linear-gradient(rgba(242,236,225,0.78), rgba(242,236,225,0.78)), url(${APP_ICON})`,
+    backgroundSize: "auto, 220px 220px",
     backgroundPosition: "center, center",
     backgroundRepeat: "no-repeat, no-repeat",
   },
