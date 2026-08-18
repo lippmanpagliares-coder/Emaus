@@ -1150,7 +1150,7 @@ function Inicio({ data, setTab }) {
               <Footprints
                 key={e.id}
                 size={18}
-                style={{ transform: "scaleX(-1)", color: done ? "var(--accent)" : "rgba(43,38,34,0.22)" }}
+                style={{ transform: "rotate(90deg)", color: done ? "var(--accent)" : "rgba(43,38,34,0.22)" }}
               />
             );
           })}
@@ -2122,10 +2122,16 @@ function Material({ data, persist, role, session }) {
                       <div style={styles.anexosBox}>
                         {m.anexos.map((a) => (
                           <div key={a.id}>
-                            <a href={a.url} target="_blank" rel="noopener noreferrer" style={styles.anexoItem}>
-                              <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
-                              <span style={styles.anexoNome}>{a.nome}</span>
-                            </a>
+                            {a.ehImagem ? (
+                              <a href={a.url} target="_blank" rel="noopener noreferrer">
+                                <img src={a.url} alt="" style={styles.postAnexoImagem} />
+                              </a>
+                            ) : (
+                              <a href={a.url} target="_blank" rel="noopener noreferrer" style={styles.anexoItem}>
+                                <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
+                                <span style={styles.anexoNome}>{a.nome}</span>
+                              </a>
+                            )}
                             {a.fonte && <p style={{ ...styles.leitura, margin: "3px 0 0 2px" }}>Fonte: {a.fonte}</p>}
                           </div>
                         ))}
@@ -2172,7 +2178,7 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
       const ref = storageRef(storage, caminho);
       await uploadBytes(ref, file);
       const url = await getDownloadURL(ref);
-      const novo = { id: `x${Date.now()}`, nome: file.name, url, caminho, fonte: "" };
+      const novo = { id: `x${Date.now()}`, nome: file.name, url, caminho, fonte: "", ehImagem: file.type.startsWith("image/") };
       setForm({ ...form, anexos: [...anexos, novo] });
     } catch (err) {
       alert("Não foi possível enviar o arquivo. Tente novamente.");
@@ -2234,7 +2240,11 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
             {anexos.map((a) => (
               <div key={a.id} style={styles.anexoCard}>
                 <div style={styles.anexoCardHead}>
-                  <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
+                  {a.ehImagem ? (
+                    <img src={a.url} alt="" style={styles.postAnexoImagemPreview} />
+                  ) : (
+                    <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
+                  )}
                   <span style={styles.anexoNome}>{a.nome}</span>
                   <button type="button" style={styles.iconButton} onClick={() => removerAnexo(a)}><Trash2 size={13} /></button>
                 </div>
