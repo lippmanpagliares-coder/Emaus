@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Flame, Calendar, BookOpen, Bell, Plus, Pencil, Trash2, X, MapPin, Pin,
   Lock, LogOut, User, Droplet, UtensilsCrossed, Sparkles, ExternalLink, Sun, Compass,
-  MessageCircle, Heart, Send, Footprints, FileDown, IdCard, Paperclip, Upload,
+  MessageCircle, Heart, Send, Footprints, FileDown, IdCard, Paperclip, Upload, Link2, Check,
 } from "lucide-react";
 import { auth, db, storage } from "./firebase.js";
 import {
@@ -113,6 +113,20 @@ function linkWhatsapp(numero) {
   if (!digitos) return null;
   const comPais = digitos.length <= 11 ? `55${digitos}` : digitos;
   return `https://wa.me/${comPais}`;
+}
+
+// Combina a caminhada de uma conta real com a de um cadastro manual vinculado a ela: o que a
+// pessoa já preencheu na própria conta vale sempre; o que ainda estiver em branco usa o que a
+// catequista já tinha registrado manualmente (sem precisar escrever no perfil de outra pessoa,
+// o que as regras de segurança não permitem).
+function mesclarCaminhada(real, manual) {
+  const base = { ...caminhadaVazia(), ...(manual || {}) };
+  const r = real || {};
+  const resultado = { ...base };
+  Object.keys(base).forEach((k) => {
+    if (r[k]) resultado[k] = r[k];
+  });
+  return resultado;
 }
 
 // Cada sacramento vira um cartão "sim/não" no formulário — se "sim", pede data (com opção de
@@ -1662,6 +1676,8 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   const [fimFerias, setFimFerias] = useState("");
   const [editandoManualId, setEditandoManualId] = useState(null);
   const [formManual, setFormManual] = useState(null);
+  const [vinculandoId, setVinculandoId] = useState(null);
+  const [alvoVinculo, setAlvoVinculo] = useState("");
 
   const catecumenosManuais = data.catecumenosManuais || [];
 
@@ -1685,6 +1701,23 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   };
   const removerManual = (id) => {
     persist({ ...data, catecumenosManuais: catecumenosManuais.filter((m) => m.id !== id) });
+  };
+
+  const iniciarVinculo = (manualId) => { setVinculandoId(manualId); setAlvoVinculo(""); };
+  const cancelarVinculo = () => { setVinculandoId(null); setAlvoVinculo(""); };
+  const confirmarVinculo = () => {
+    if (!alvoVinculo) return;
+    persist({
+      ...data,
+      catecumenosManuais: catecumenosManuais.map((m) => (m.id === vinculandoId ? { ...m, vinculadoAId: alvoVinculo } : m)),
+    });
+    cancelarVinculo();
+  };
+  const desvincular = (manualId) => {
+    persist({
+      ...data,
+      catecumenosManuais: catecumenosManuais.map((m) => (m.id === manualId ? { ...m, vinculadoAId: null } : m)),
+    });
   };
 
   const cal = data.calendarioAulas || calendarioAulasVazio();
@@ -1736,16 +1769,45 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
 
   if (session.papel === "catequista") {
     const turmaAtual = (turmas || []).find((t) => t.id === turmaAtualId);
-    const alunos = users.filter((u) => u.papel === "aluno" && u.turmaId === turmaAtualId);
-    // Junta as contas reais com os catecúmenos cadastrados manualmente (quem não quer/consegue
-    // criar conta no app) — a partir daqui os dois aparecem juntos em toda a turma.
-    const alunosTodos = [...alunos, ...catecumenosManuais.map((m) => ({ ...m, manual: true }))];
+    const alunosReais = users.filter((u) => u.papel === "aluno" && u.turmaId === turmaAtualId);
+    // Um cadastro manual pode ser vinculado a uma conta real da mesma pessoa (quando ela cria
+    // conta depois de já ter sido cadastrada manualmente) — a partir daí some da lista separada e
+    // seus dados só entram como reserva onde a conta real ainda estiver em branco.
+    const manuaisVinculados = catecumenosManuais.filter((m) => m.vinculadoAId);
+    const manuaisAvulsos = catecumenosManuais.filter((m) => !m.vinculadoAId);
+    const alunosComVinculo = alunosReais.map((a) => {
+      const vinculo = manuaisVinculados.find((m) => m.vinculadoAId === a.id);
+      if (!vinculo) return a;
+      return { ...a, caminhada: mesclarCaminhada(a.caminhada, vinculo.caminhada), vinculoManualId: vinculo.id, vinculoManualNome: vinculo.nome };
+    });
+    // Junta as contas reais com os catecúmenos cadastrados manualmente ainda não vinculados —
+    // a partir daqui os dois aparecem juntos em toda a turma.
+    const alunosTodos = [...alunosComVinculo, ...manuaisAvulsos.map((m) => ({ ...m, manual: true }))];
     const encontrosOrdenados = [...data.encontros].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999"));
     const encontroAtual = encontrosOrdenados.find((e) => e.data === today)
       || [...encontrosOrdenados].reverse().find((e) => e.data && e.data <= today)
       || encontrosOrdenados[0]
       || null;
     const encontroPresenca = encontrosOrdenados.find((e) => e.id === encontroPresencaId) || encontroAtual;
+
+    // Resumo de relance da turma: presença média (só conta encontros já realizados com presença
+    // marcada) e quantos catequizandos ainda não têm nenhum sacramento registrado.
+    const encontrosRealizados = encontrosOrdenados.filter((e) => e.data && e.data <= today);
+    let presencasMarcadas = 0;
+    let presencasTotal = 0;
+    encontrosRealizados.forEach((e) => {
+      alunosTodos.forEach((a) => {
+        const p = e.presencas?.[a.id];
+        if (p === true || p === false) {
+          presencasTotal += 1;
+          if (p === true) presencasMarcadas += 1;
+        }
+      });
+    });
+    const presencaMedia = presencasTotal > 0 ? Math.round((presencasMarcadas / presencasTotal) * 100) : null;
+    const semSacramento = alunosTodos.filter(
+      (a) => !SACRAMENTOS_CONFIG.some((s) => (a.caminhada || {})[`${s.prefixo}Status`])
+    ).length;
 
     const marcarPresenca = (alunoId, presente) => {
       if (!encontroPresenca) return;
@@ -1940,25 +2002,51 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
                     : "Data de nascimento não informada";
                   const whatsapp = linkWhatsapp(c.whatsapp);
                   return (
-                    <div key={a.id} style={styles.timelineHead}>
-                      <span style={styles.cardBody}>
-                        {a.nome}
-                        {a.manual && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, marginLeft: 6 }}>(cadastro manual)</span>}
-                        {whatsapp && (
-                          <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ fontSize: FS.sm, color: GOLD, marginLeft: 8 }}>
-                            <MessageCircle size={12} style={{ marginRight: 3, verticalAlign: "middle" }} />{c.whatsapp}
-                          </a>
-                        )}
-                      </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: FS.sm, color: TEXT_MUTED }}>{nascimento}</span>
-                        {a.manual && (
-                          <div style={styles.rowActions}>
-                            <button style={styles.iconButton} onClick={() => iniciarEditarManual(a)}><Pencil size={13} /></button>
-                            <button style={styles.iconButton} onClick={() => removerManual(a.id)}><Trash2 size={13} /></button>
-                          </div>
-                        )}
+                    <div key={a.id} style={styles.stack}>
+                      <div style={styles.timelineHead}>
+                        <span style={styles.cardBody}>
+                          {a.nome}
+                          {a.manual && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, marginLeft: 6 }}>(cadastro manual)</span>}
+                          {a.vinculoManualId && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, marginLeft: 6 }}>(aproveitando dados de {a.vinculoManualNome})</span>}
+                          {whatsapp && (
+                            <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ fontSize: FS.sm, color: GOLD, marginLeft: 8 }}>
+                              <MessageCircle size={12} style={{ marginRight: 3, verticalAlign: "middle" }} />{c.whatsapp}
+                            </a>
+                          )}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: FS.sm, color: TEXT_MUTED }}>{nascimento}</span>
+                          {a.manual && (
+                            <div style={styles.rowActions}>
+                              {alunosReais.some((r) => !manuaisVinculados.some((m) => m.vinculadoAId === r.id)) && (
+                                <button style={styles.iconButton} onClick={() => iniciarVinculo(a.id)} title="Vincular a uma conta"><Link2 size={13} /></button>
+                              )}
+                              <button style={styles.iconButton} onClick={() => iniciarEditarManual(a)}><Pencil size={13} /></button>
+                              <button style={styles.iconButton} onClick={() => removerManual(a.id)}><Trash2 size={13} /></button>
+                            </div>
+                          )}
+                          {a.vinculoManualId && (
+                            <div style={styles.rowActions}>
+                              <button style={styles.iconButton} onClick={() => desvincular(a.vinculoManualId)} title="Desvincular"><X size={13} /></button>
+                            </div>
+                          )}
+                        </div>
                       </div>
+                      {vinculandoId === a.id && (
+                        <div style={styles.formRow}>
+                          <label style={styles.label}>Vincular "{a.nome}" (cadastro manual) a qual conta?</label>
+                          <select style={styles.input} value={alvoVinculo} onChange={(e) => setAlvoVinculo(e.target.value)}>
+                            <option value="">Selecione a conta...</option>
+                            {alunosReais.filter((r) => !manuaisVinculados.some((m) => m.vinculadoAId === r.id)).map((r) => (
+                              <option key={r.id} value={r.id}>{r.nome}</option>
+                            ))}
+                          </select>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+                            <button style={styles.linkButton} onClick={cancelarVinculo}>Cancelar</button>
+                            <button style={styles.saveButton} onClick={confirmarVinculo}><Check size={13} style={{ marginRight: 4 }} />Vincular</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -2036,6 +2124,29 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
     return (
       <div style={styles.stack}>
         <h2 style={styles.sectionTitle}>Caminhada da turma</h2>
+
+        <div style={styles.card}>
+          <p style={styles.cardEyebrow}>RESUMO DA TURMA</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "14px 28px" }}>
+            <div>
+              <p style={{ fontSize: FS.section, fontWeight: 700, margin: 0 }}>{alunosTodos.length}</p>
+              <p style={{ fontSize: FS.sm, color: TEXT_MUTED, margin: 0 }}>catequizando{alunosTodos.length === 1 ? "" : "s"}</p>
+            </div>
+            <div>
+              <p style={{ fontSize: FS.section, fontWeight: 700, margin: 0 }}>{encontrosRealizados.length} de {encontrosOrdenados.length}</p>
+              <p style={{ fontSize: FS.sm, color: TEXT_MUTED, margin: 0 }}>encontros realizados</p>
+            </div>
+            <div>
+              <p style={{ fontSize: FS.section, fontWeight: 700, margin: 0 }}>{presencaMedia === null ? "—" : `${presencaMedia}%`}</p>
+              <p style={{ fontSize: FS.sm, color: TEXT_MUTED, margin: 0 }}>presença média</p>
+            </div>
+            <div>
+              <p style={{ fontSize: FS.section, fontWeight: 700, margin: 0 }}>{semSacramento}</p>
+              <p style={{ fontSize: FS.sm, color: TEXT_MUTED, margin: 0 }}>sem sacramento registrado</p>
+            </div>
+          </div>
+        </div>
+
         {turmaAtual?.codigoConvite && (
           <div style={styles.card}>
             <p style={styles.cardEyebrow}>CÓDIGO DE CONVITE DESTA TURMA</p>
@@ -2822,6 +2933,8 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
   const [sugestoesMencao, setSugestoesMencao] = useState([]);
   const [anexo, setAnexo] = useState(null);
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
+  const [editandoId, setEditandoId] = useState(null);
+  const [textoEdicao, setTextoEdicao] = useState("");
   const textareaRef = useRef(null);
   const anexoInputRef = useRef(null);
 
@@ -2938,6 +3051,17 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
   };
 
   const remover = (id) => persist({ ...data, posts: posts.filter((p) => p.id !== id) });
+
+  const iniciarEdicao = (post) => { setEditandoId(post.id); setTextoEdicao(post.texto || ""); };
+  const cancelarEdicao = () => { setEditandoId(null); setTextoEdicao(""); };
+  const salvarEdicao = (id) => {
+    if (!textoEdicao.trim()) return;
+    persist({
+      ...data,
+      posts: posts.map((p) => (p.id === id ? { ...p, texto: textoEdicao.trim(), editadoEm: new Date().toISOString() } : p)),
+    });
+    cancelarEdicao();
+  };
 
   const alternarCurtida = (post) => {
     const uid = session?.id || "anon";
@@ -3061,11 +3185,34 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
                   {post.autor} · {formatDateTime(post.criadoEm)}
                 </p>
                 {(role === "catequista" || post.autorId === session?.id) && (
-                  <button style={styles.iconButton} onClick={() => remover(post.id)}><Trash2 size={13} /></button>
+                  <div style={styles.rowActions}>
+                    <button style={styles.iconButton} onClick={() => iniciarEdicao(post)}><Pencil size={13} /></button>
+                    <button style={styles.iconButton} onClick={() => remover(post.id)}><Trash2 size={13} /></button>
+                  </div>
                 )}
               </div>
               {post.tipo === "oracao" && <p style={styles.postTipoBadge}><Heart size={12} style={{ marginRight: 4 }} />Pedido de oração</p>}
-              {post.texto && <p style={{ ...styles.cardBody, whiteSpace: "pre-wrap" }}>{renderizarTexto(post.texto)}</p>}
+              {editandoId === post.id ? (
+                <div style={{ marginTop: 6 }}>
+                  <textarea
+                    style={{ ...styles.input, minHeight: 60 }}
+                    value={textoEdicao}
+                    onChange={(e) => setTextoEdicao(e.target.value)}
+                    autoFocus
+                  />
+                  <div style={{ display: "flex", gap: 8, marginTop: 6, justifyContent: "flex-end" }}>
+                    <button style={styles.linkButton} onClick={cancelarEdicao}>Cancelar</button>
+                    <button style={styles.saveButton} onClick={() => salvarEdicao(post.id)}>Salvar</button>
+                  </div>
+                </div>
+              ) : (
+                post.texto && (
+                  <p style={{ ...styles.cardBody, whiteSpace: "pre-wrap" }}>
+                    {renderizarTexto(post.texto)}
+                    {post.editadoEm && <span style={{ fontSize: FS.tiny, color: TEXT_MUTED }}> (editado)</span>}
+                  </p>
+                )
+              )}
               {post.anexo && (
                 post.anexo.ehImagem ? (
                   <a href={post.anexo.url} target="_blank" rel="noopener noreferrer">
