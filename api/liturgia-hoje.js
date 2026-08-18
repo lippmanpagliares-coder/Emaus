@@ -49,48 +49,63 @@ export default async function handler(req, res) {
 
   for (let offset = 0; offset <= MAX_DIAS_ATRAS; offset++) {
     const { dia, mes, ano, chave: dataFonte } = dataBrasil(offset);
-    const url = `https://bibliotecacatolica.com.br/blog/liturgia-diaria/${dia}-${mes}-${ano}/`;
+    // A fonte mudou o padrão do link nas edições mais recentes (passou a
+    // repetir "liturgia-diaria-" antes da data); tenta o formato novo e
+    // cai pro antigo, cobrindo as duas fases do site.
+    const candidatos = [
+      `https://bibliotecacatolica.com.br/blog/liturgia-diaria/liturgia-diaria-${dia}-${mes}-${ano}/`,
+      `https://bibliotecacatolica.com.br/blog/liturgia-diaria/${dia}-${mes}-${ano}/`,
+    ];
 
-    try {
-      const resposta = await fetch(url, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; EmausApp/1.0)" },
-      });
-      if (!resposta.ok) continue;
-
-      const html = await resposta.text();
-      const $ = cheerio.load(html);
-
-      const introHtml = $("p.has-medium-font-size").first().html() || "";
-      const partesIntro = introHtml.split(/<br\s*\/?>/i);
-      const semanaLiturgica = cheerio.load(partesIntro[partesIntro.length - 1] || "").text().trim();
-
-      const leituras = [];
-      const primeira = referenciaDoHeading($, "primeira-leitura");
-      if (primeira) leituras.push({ tipo: "Primeira Leitura", referencia: primeira });
-
-      const segunda = referenciaDoHeading($, "segunda-leitura");
-      if (segunda) leituras.push({ tipo: "Segunda Leitura", referencia: segunda });
-
-      const salmo = referenciaDoHeading($, "salmo");
-      if (salmo) leituras.push({ tipo: "Salmo", referencia: salmo });
-
-      const evangelho = referenciaDoHeading($, "evangelho");
-      if (evangelho) leituras.push({ tipo: "Evangelho", referencia: evangelho });
-
-      res.status(200).json({
-        dataChave,
-        dataFonte,
-        semanaLiturgica,
-        leituras,
-        santoDoDia: santoDoDia($),
-        fonte: url,
-        fonteLabel: "Minha Biblioteca Católica",
-      });
-      return;
-    } catch {
-      // tenta o dia anterior
+    for (const url of candidatos) {
+      try {
+        const resultado = await tentarBuscar(url, dataChave, dataFonte);
+        if (resultado) {
+          res.status(200).json(resultado);
+          return;
+        }
+      } catch {
+        // tenta o próximo formato de link, ou o dia anterior
+      }
     }
   }
 
   res.status(502).json({ error: "Fonte ainda não publicou nenhuma edição recente" });
+}
+
+async function tentarBuscar(url, dataChave, dataFonte) {
+  const resposta = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; EmausApp/1.0)" },
+  });
+  if (!resposta.ok) return null;
+
+  const html = await resposta.text();
+  const $ = cheerio.load(html);
+
+  const introHtml = $("p.has-medium-font-size").first().html() || "";
+  const partesIntro = introHtml.split(/<br\s*\/?>/i);
+  const semanaLiturgica = cheerio.load(partesIntro[partesIntro.length - 1] || "").text().trim();
+
+  const leituras = [];
+  const primeira = referenciaDoHeading($, "primeira-leitura");
+  if (primeira) leituras.push({ tipo: "Primeira Leitura", referencia: primeira });
+
+  const segunda = referenciaDoHeading($, "segunda-leitura");
+  if (segunda) leituras.push({ tipo: "Segunda Leitura", referencia: segunda });
+
+  const salmo = referenciaDoHeading($, "salmo");
+  if (salmo) leituras.push({ tipo: "Salmo", referencia: salmo });
+
+  const evangelho = referenciaDoHeading($, "evangelho");
+  if (evangelho) leituras.push({ tipo: "Evangelho", referencia: evangelho });
+
+  return {
+    dataChave,
+    dataFonte,
+    semanaLiturgica,
+    leituras,
+    santoDoDia: santoDoDia($),
+    fonte: url,
+    fonteLabel: "Minha Biblioteca Católica",
+  };
 }
