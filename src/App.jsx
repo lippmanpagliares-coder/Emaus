@@ -2,9 +2,9 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Flame, Calendar, BookOpen, Bell, Plus, Pencil, Trash2, X, MapPin, Pin,
   Lock, LogOut, User, Droplet, UtensilsCrossed, Sparkles, ExternalLink, Sun, Compass,
-  MessageCircle, Heart, Send, Footprints, FileDown, IdCard,
+  MessageCircle, Heart, Send, Footprints, FileDown, IdCard, Paperclip, Upload,
 } from "lucide-react";
-import { auth, db } from "./firebase.js";
+import { auth, db, storage } from "./firebase.js";
 import {
   onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut, sendPasswordResetEmail, updateProfile, EmailAuthProvider,
@@ -13,6 +13,7 @@ import {
 import {
   collection, doc, getDoc, getDocs, setDoc, onSnapshot,
 } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
 const CODIGO_CATEQUISTA = "EMAUS2026";
 const EXIGIR_LOGIN = true;
@@ -1971,10 +1972,10 @@ function Material({ data, persist, role, session }) {
   const [openId, setOpenId] = useState(null);
 
   const startNew = () => {
-    setForm({ id: `m${Date.now()}`, encontroId: data.encontros[0]?.id || "", titulo: "", leitura: "", conteudo: "", paraProximoEncontro: "", videoUrl: "", comentarios: [] });
+    setForm({ id: `m${Date.now()}`, encontroId: data.encontros[0]?.id || "", titulo: "", leitura: "", conteudo: "", paraProximoEncontro: "", videoUrl: "", comentarios: [], anexos: [] });
     setEditing("new");
   };
-  const startEdit = (m) => { setForm({ comentarios: [], ...m }); setEditing(m.id); };
+  const startEdit = (m) => { setForm({ comentarios: [], anexos: [], ...m }); setEditing(m.id); };
   const cancel = () => { setEditing(null); setForm(null); };
 
   const save = () => {
@@ -2069,6 +2070,17 @@ function Material({ data, persist, role, session }) {
                       </div>
                     )}
 
+                    {(m.anexos || []).length > 0 && (
+                      <div style={styles.anexosBox}>
+                        {m.anexos.map((a) => (
+                          <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer" style={styles.anexoItem}>
+                            <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
+                            <span style={styles.anexoNome}>{a.nome}</span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
                     <Comentarios
                       item={m}
                       session={session}
@@ -2096,6 +2108,36 @@ function Material({ data, persist, role, session }) {
 }
 
 function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
+  const [enviando, setEnviando] = useState(false);
+  const fileInputRef = useRef(null);
+  const anexos = form.anexos || [];
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEnviando(true);
+    try {
+      const caminho = `materiais/${form.id}/${Date.now()}-${file.name}`;
+      const ref = storageRef(storage, caminho);
+      await uploadBytes(ref, file);
+      const url = await getDownloadURL(ref);
+      const novo = { id: `x${Date.now()}`, nome: file.name, url, caminho };
+      setForm({ ...form, anexos: [...anexos, novo] });
+    } catch (err) {
+      alert("Não foi possível enviar o arquivo. Tente novamente.");
+    } finally {
+      setEnviando(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const removerAnexo = (anexo) => {
+    setForm({ ...form, anexos: anexos.filter((a) => a.id !== anexo.id) });
+    if (anexo.caminho) {
+      deleteObject(storageRef(storage, anexo.caminho)).catch(() => {});
+    }
+  };
+
   return (
     <div style={styles.formCard}>
       <div style={styles.formRow}>
@@ -2129,6 +2171,24 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
       <div style={styles.formRow}>
         <label style={styles.label}>Para o próximo encontro (opcional)</label>
         <textarea style={{ ...styles.input, minHeight: 70 }} value={form.paraProximoEncontro || ""} onChange={(e) => setForm({ ...form, paraProximoEncontro: e.target.value })} placeholder="Ex: Trazer uma foto do batismo, se tiver." />
+      </div>
+      <div style={styles.formRow}>
+        <label style={styles.label}>Anexos (opcional)</label>
+        {anexos.length > 0 && (
+          <div style={styles.anexosBox}>
+            {anexos.map((a) => (
+              <div key={a.id} style={styles.anexoItem}>
+                <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
+                <span style={styles.anexoNome}>{a.nome}</span>
+                <button type="button" style={styles.iconButton} onClick={() => removerAnexo(a)}><Trash2 size={13} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label style={styles.anexoUploadButton}>
+          <Upload size={14} /> {enviando ? "Enviando..." : "Adicionar arquivo"}
+          <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={handleFile} disabled={enviando} />
+        </label>
       </div>
       <div style={styles.formActions}>
         <button style={styles.cancelButton} onClick={onCancel}><X size={14} /> Cancelar</button>
@@ -2678,6 +2738,10 @@ const styles = {
   leitura: { fontSize: FS.base, fontStyle: "italic", color: TEXT_MUTED, margin: "0 0 6px" },
   paraCasaBox: { marginTop: 14, padding: "12px 14px", background: "rgba(122,35,51,0.06)", border: "1px dashed rgba(122,35,51,0.4)", borderRadius: R.box },
   paraCasaEyebrow: { fontFamily: "'Karla', sans-serif", fontWeight: 700, fontSize: FS.xs, letterSpacing: "0.06em", color: GOLD, margin: "0 0 4px", display: "flex", alignItems: "center" },
+  anexosBox: { marginTop: 10, display: "flex", flexDirection: "column", gap: 6 },
+  anexoItem: { display: "flex", alignItems: "center", gap: 8, background: "rgba(46,36,23,0.05)", border: "1px solid rgba(122,35,51,0.25)", borderRadius: R.icon, padding: "8px 12px", textDecoration: "none" },
+  anexoNome: { flex: 1, fontSize: FS.md, color: TEXT_LIGHT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  anexoUploadButton: { display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(46,36,23,0.06)", border: "1px dashed rgba(122,35,51,0.4)", borderRadius: R.icon, padding: "8px 12px", fontSize: FS.base, color: GOLD, cursor: "pointer", width: "fit-content", marginTop: 4 },
   videoWrap: { position: "relative", width: "100%", paddingTop: "56.25%", marginTop: 14, borderRadius: R.button, overflow: "hidden", background: "#000" },
   videoFrame: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" },
   comentariosBox: { marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(122,35,51,0.15)" },
