@@ -127,10 +127,10 @@ function resumoSacramento(c, prefixo, titulo) {
     const campoExtra = SACRAMENTOS_CONFIG.find((s) => s.prefixo === prefixo)?.campoExtra;
     const extraValor = campoExtra ? c[campoExtra.key] : "";
     const extraTxt = extraValor ? ` · ${campoExtra.label}: ${extraValor}` : "";
-    return { titulo, feito: true, detalhe: `${dataTxt}${local ? ` — ${local}` : ""}${extraTxt}` };
+    return { titulo, feito: true, detalhe: `Sim, ${dataTxt}${local ? ` — ${local}` : ""}${extraTxt}` };
   }
-  if (status === "nao") return { titulo, feito: false, detalhe: "não recebeu" };
-  return { titulo, feito: null, detalhe: "não informado" };
+  if (status === "nao") return { titulo, feito: false, detalhe: "Não" };
+  return { titulo, feito: null, detalhe: "Não informado" };
 }
 
 const DIAS_SEMANA_NOME = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
@@ -1736,12 +1736,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
         const nascimento = c.nascimentoDia && c.nascimentoMes
           ? `${c.nascimentoDia} de ${MESES_NOME[Number(c.nascimentoMes) - 1]}${c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}`
           : "";
-        const colunasSacramentos = SACRAMENTOS_CONFIG.map((s) => {
-          const r = resumoSacramento(c, s.prefixo, s.titulo);
-          if (r.feito === true) return r.detalhe;
-          if (r.feito === false) return "Não recebeu";
-          return "Não informado";
-        });
+        const colunasSacramentos = SACRAMENTOS_CONFIG.map((s) => resumoSacramento(c, s.prefixo, s.titulo).detalhe);
         return [a.nome, nascimento, ...colunasSacramentos];
       });
       const planilha = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
@@ -2025,7 +2020,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
                 return (
                   <p key={s.prefixo} style={{ ...styles.cardBody, ...(r.feito ? {} : { color: TEXT_MUTED }) }}>
                     <Icon size={13} style={{ marginRight: 4 }} />
-                    {r.titulo}: {r.feito ? r.detalhe : "não recebeu"}
+                    {r.titulo}: {r.detalhe}
                   </p>
                 );
               })}
