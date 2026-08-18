@@ -17,6 +17,19 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "fi
 import * as XLSX from "xlsx";
 
 const CODIGO_CATEQUISTA = "EMAUS2026";
+
+// Chave pública do VAPID (par gerado só pra este app) — usada pelo navegador pra criar a
+// inscrição de notificações push. Não é segredo: só a chave PRIVADA (que fica só no servidor,
+// numa variável de ambiente) consegue de fato mandar notificação usando essa inscrição.
+const VAPID_PUBLIC_KEY = "BA0I9YUsQCK7FZm0mH8S7ZNXTNpuv6592_uap7o2-QhULs8QN7tq8qCIswLWaFRBwBjdNJPJEBhJhXc9qi_AiIQ";
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
 const EXIGIR_LOGIN = true;
 
 function gerarCodigoConvite(nome) {
@@ -801,7 +814,7 @@ export default function App() {
                 onCatequizandoExcluido={(uid) => setUsers((prev) => (prev || []).filter((u) => u.id !== uid))}
               />
             )}
-            {tab === "avisos" && <Avisos data={data} persist={persist} role={effectiveRole} />}
+            {tab === "avisos" && <Avisos data={data} persist={persist} role={effectiveRole} turmaAtualId={turmaAtualId} />}
             {tab === "comunidade" && <Comunidade data={data} persist={persist} role={effectiveRole} session={effectiveSession} users={users} turmaAtualId={turmaAtualId} />}
           </>
         )}
@@ -1290,6 +1303,29 @@ function Perfil({ session, users, persistUsers, onVoltar }) {
   const [erroSenhaPropria, setErroSenhaPropria] = useState("");
   const [senhaAlterada, setSenhaAlterada] = useState(false);
 
+  const [statusNotificacao, setStatusNotificacao] = useState("verificando");
+  const [ativandoNotificacao, setAtivandoNotificacao] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setStatusNotificacao("indisponivel");
+        return;
+      }
+      if (Notification.permission === "denied") {
+        setStatusNotificacao("negado");
+        return;
+      }
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        setStatusNotificacao(sub ? "ativado" : "desativado");
+      } catch {
+        setStatusNotificacao("indisponivel");
+      }
+    })();
+  }, []);
+
   const [excluindoConta, setExcluindoConta] = useState(false);
   const [senhaExclusao, setSenhaExclusao] = useState("");
   const [erroExclusao, setErroExclusao] = useState("");
@@ -1346,6 +1382,43 @@ function Perfil({ session, users, persistUsers, onVoltar }) {
       setTimeout(() => setSenhaAlterada(false), 2000);
     } catch {
       setErroSenhaPropria("Senha atual incorreta.");
+    }
+  };
+
+  const ativarNotificacoes = async () => {
+    setAtivandoNotificacao(true);
+    try {
+      const permissao = await Notification.requestPermission();
+      if (permissao !== "granted") {
+        setStatusNotificacao("negado");
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+      const next = users.map((u) => (u.id === session.id ? { ...u, pushSubscription: sub.toJSON() } : u));
+      await persistUsers(next);
+      setStatusNotificacao("ativado");
+    } catch {
+      setStatusNotificacao("desativado");
+    } finally {
+      setAtivandoNotificacao(false);
+    }
+  };
+
+  const desativarNotificacoes = async () => {
+    setAtivandoNotificacao(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+      const next = users.map((u) => (u.id === session.id ? { ...u, pushSubscription: null } : u));
+      await persistUsers(next);
+      setStatusNotificacao("desativado");
+    } finally {
+      setAtivandoNotificacao(false);
     }
   };
 
@@ -1444,6 +1517,35 @@ function Perfil({ session, users, persistUsers, onVoltar }) {
               <button style={styles.saveButton} onClick={alterarMinhaSenha}>Salvar nova senha</button>
             </div>
           </div>
+        )}
+      </section>
+
+      <section style={styles.card}>
+        <p style={styles.cardEyebrow}>NOTIFICAÇÕES</p>
+        {statusNotificacao === "indisponivel" && (
+          <p style={styles.cardBody}>Seu navegador ou aparelho não aceita notificações no momento.</p>
+        )}
+        {statusNotificacao === "negado" && (
+          <p style={styles.cardBody}>
+            Notificações bloqueadas nas configurações do aparelho ou navegador. Pra ativar, permita notificações
+            pro Emaús nas configurações do seu celular/navegador e volte aqui.
+          </p>
+        )}
+        {statusNotificacao === "ativado" && (
+          <>
+            <p style={styles.cardBody}>Notificações ativadas neste aparelho — você recebe um aviso quando a catequista publicar algo novo no Mural.</p>
+            <button style={styles.linkButton} disabled={ativandoNotificacao} onClick={desativarNotificacoes}>
+              {ativandoNotificacao ? "Aguarde..." : "Desativar notificações"}
+            </button>
+          </>
+        )}
+        {statusNotificacao === "desativado" && (
+          <>
+            <p style={styles.cardBody}>Ative para receber um aviso neste aparelho quando a catequista publicar algo novo no Mural.</p>
+            <button style={styles.saveButton} disabled={ativandoNotificacao} onClick={ativarNotificacoes}>
+              {ativandoNotificacao ? "Ativando..." : "Ativar notificações"}
+            </button>
+          </>
         )}
       </section>
 
@@ -3067,7 +3169,7 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
   );
 }
 
-function Avisos({ data, persist, role }) {
+function Avisos({ data, persist, role, turmaAtualId }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(null);
 
@@ -3078,11 +3180,28 @@ function Avisos({ data, persist, role }) {
   const startEdit = (a) => { setForm({ ...a }); setEditing(a.id); };
   const cancel = () => { setEditing(null); setForm(null); };
 
+  // A notificação é só um "extra" avisando quem já tinha ativado — se essa chamada falhar, o
+  // aviso já foi salvo normalmente no passo anterior, então não trava nem mostra erro pra ninguém.
+  const notificarNovoAviso = async (aviso) => {
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      await fetch("/api/notificar-turma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken, turmaId: turmaAtualId, titulo: aviso.titulo, mensagem: aviso.texto }),
+      });
+    } catch {
+      // silencioso de propósito
+    }
+  };
+
   const save = () => {
     if (!form.titulo.trim()) return;
+    const isNovo = editing === "new";
     const exists = data.avisos.some((a) => a.id === form.id);
     const next = exists ? data.avisos.map((a) => (a.id === form.id ? form : a)) : [form, ...data.avisos];
     persist({ ...data, avisos: next });
+    if (isNovo) notificarNovoAviso(form);
     cancel();
   };
 
