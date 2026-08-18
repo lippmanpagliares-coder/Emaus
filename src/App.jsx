@@ -144,10 +144,13 @@ function todayWeekdayLabel() {
 
 // Em algumas fontes o indicador ordinal (ª/º) fica quase idêntico a um "a"/"o" comum —
 // aqui ele vira um <sup> de verdade, garantindo que sempre apareça pequeno e elevado.
+// Usa position:relative em vez de depender do vertical-align padrão do <sup>, porque
+// vertical-align não tem efeito dentro de containers display:flex (como o cardBody).
 function comOrdinalSuperescrito(texto) {
   if (!texto) return texto;
+  const estiloOrdinal = { fontSize: "0.7em", position: "relative", top: "-0.5em" };
   return texto.split(/([ªº])/).map((parte, i) =>
-    parte === "ª" || parte === "º" ? <sup key={i}>{parte}</sup> : parte
+    parte === "ª" || parte === "º" ? <sup key={i} style={estiloOrdinal}>{parte}</sup> : parte
   );
 }
 
