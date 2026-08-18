@@ -818,6 +818,38 @@ function traduzErroFirebase(err) {
   return "Algo deu errado. Tente novamente.";
 }
 
+// Termos de Uso e Privacidade — exigidos no cadastro (ver seção 4 sobre dado sensível/LGPD).
+// Atualizar aqui também atualiza o que aparece pro catecúmeno na tela de criar conta.
+const TERMOS_USO_ATUALIZADO = "18 de agosto de 2026";
+const TERMOS_USO_SECOES = [
+  { titulo: null, texto: "Estes Termos explicam como o aplicativo Emaús funciona, o que fazemos com as informações que você compartilha nele, e o que você pode esperar (e não pode) do serviço. Ao criar uma conta ou usar o app, você concorda com o que está descrito aqui." },
+  { titulo: "1. O que é o Emaús", texto: "O Emaús é um aplicativo gratuito e sem fins lucrativos, criado para apoiar o trabalho de catequese de adultos. Não é vinculado a nenhuma paróquia ou instituição específica — é um projeto independente, mantido por sua criadora. Ele serve para compartilhar materiais de estudo entre catequista e catecúmenos; organizar o cronograma de encontros e o calendário de aulas de cada turma; registrar presença e acompanhar a caminhada de fé (sacramentos, datas e informações relacionadas); e permitir que catequista e catecúmenos troquem mensagens, fotos e arquivos entre si na Comunidade da turma. O app não tem fins comerciais, não vende produtos ou serviços, e não gera qualquer tipo de cobrança aos seus usuários." },
+  { titulo: "2. Quem pode usar", texto: "O Emaús é destinado a catequistas e catecúmenos maiores de 18 anos, participantes de turmas de catequese de adultos cadastradas no aplicativo. Cada pessoa é responsável por manter os dados de acesso (e-mail e senha) em sigilo e por tudo o que for feito através da própria conta." },
+  { titulo: "3. Conteúdo enviado por você", texto: "Você é o único responsável pelas informações, textos, fotos e arquivos que inserir no aplicativo — seja na Comunidade, em \"Minha Caminhada\", em materiais ou em qualquer outro espaço. Não nos responsabilizamos pela exatidão, veracidade, licitude ou pelos direitos sobre esse conteúdo, nem por danos que ele venha a causar a você ou a terceiros. Pedimos que o uso do app seja sempre respeitoso e compatível com o espírito da catequese. Conteúdos ofensivos, discriminatórios, ou que violem direitos de terceiros podem ser removidos a qualquer momento pela catequista responsável, sem aviso prévio." },
+  { titulo: "4. Quais dados coletamos, e por quê", texto: "Para o funcionamento do app, podemos armazenar: nome, e-mail, WhatsApp (opcional), data de nascimento e informações sobre sacramentos (batismo, eucaristia, crisma e matrimônio), quando você optar por preenchê-las. Informações sobre sacramentos envolvem convicção religiosa e são consideradas dado pessoal sensível pela Lei Geral de Proteção de Dados (LGPD). Elas só são coletadas com o seu consentimento, ao preenchê-las voluntariamente, e são usadas exclusivamente para o acompanhamento da sua caminhada dentro da turma — nunca para outra finalidade, nunca vendidas, e nunca compartilhadas fora do aplicativo. Fotos e arquivos enviados na Comunidade ou em Materiais ficam visíveis para os demais membros da mesma turma e para a catequista responsável." },
+  { titulo: "5. Por quanto tempo guardamos seus dados", texto: "Os dados de uma turma são mantidos por até 2 (dois) anos após a conclusão dessa etapa da catequese. Depois desse prazo, podem ser apagados permanentemente, sem aviso prévio individual. Esse prazo existe porque o Emaús é um aplicativo gratuito, mantido de forma voluntária e sem estrutura de armazenamento ilimitada. Se você quiser guardar alguma informação — como a lembrança/certificado da sua caminhada — recomendamos salvá-la por conta própria antes desse período." },
+  { titulo: "6. Seus direitos sobre os dados", texto: "Você pode, a qualquer momento, pedir à catequista responsável pela sua turma para corrigir ou apagar os dados que preencheu, ou para remover sua conta. Cadastros feitos manualmente pela catequista (para quem não usa conta própria) também podem ser corrigidos ou removidos mediante pedido à catequista." },
+  { titulo: "7. Disponibilidade do aplicativo", texto: "O Emaús é oferecido \"como está\", de forma gratuita, sem qualquer garantia de funcionamento contínuo. O aplicativo pode ficar fora do ar temporária ou permanentemente; pode ter suas funcionalidades alteradas a qualquer momento; e pode ser extinto ou parar de funcionar definitivamente, sem aviso prévio. Nenhuma dessas situações dá direito a indenização, cópia de segurança (backup), recuperação de dados ou qualquer outra forma de compensação. Recomendamos não depender do app como único local de guarda de informações importantes para você." },
+  { titulo: "8. Limitação de responsabilidade", texto: "Na máxima extensão permitida por lei, não nos responsabilizamos por: perda ou indisponibilidade de dados, interrupção do serviço, conteúdo publicado por outros usuários, ou qualquer dano direto ou indireto decorrente do uso — ou da impossibilidade de uso — do aplicativo." },
+  { titulo: "9. Alterações nestes termos", texto: "Estes Termos podem ser atualizados a qualquer momento, para refletir mudanças no aplicativo ou na legislação aplicável. A versão mais recente estará sempre disponível dentro do próprio app." },
+  { titulo: "10. Contato", texto: "Dúvidas sobre estes Termos, ou pedidos relacionados aos seus dados pessoais, podem ser encaminhados para a catequista responsável pela sua turma, ou para priscila@blladv.com.br." },
+  { titulo: "11. Lei aplicável", texto: "Estes Termos são regidos pelas leis da República Federativa do Brasil, incluindo a Lei Geral de Proteção de Dados (Lei nº 13.709/2018)." },
+];
+
+function TermosUsoTexto() {
+  return (
+    <div style={{ maxHeight: 240, overflowY: "auto", padding: "2px 2px 2px 0" }}>
+      <p style={{ ...styles.leitura, fontStyle: "italic" }}>Última atualização: {TERMOS_USO_ATUALIZADO}</p>
+      {TERMOS_USO_SECOES.map((s, i) => (
+        <div key={i} style={{ marginBottom: 10 }}>
+          {s.titulo && <p style={{ fontWeight: 700, fontSize: FS.sm, margin: "0 0 4px" }}>{s.titulo}</p>}
+          <p style={{ ...styles.leitura, margin: 0 }}>{s.texto}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function LoginScreen() {
   const [mode, setMode] = useState("entrar");
   const [nome, setNome] = useState("");
@@ -827,6 +859,8 @@ function LoginScreen() {
   const [codigo, setCodigo] = useState("");
   const [codigoTurma, setCodigoTurma] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [aceitouTermos, setAceitouTermos] = useState(false);
+  const [verTermos, setVerTermos] = useState(false);
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [turmas, setTurmas] = useState(null);
@@ -872,6 +906,10 @@ function LoginScreen() {
       setErro("A senha precisa ter pelo menos 6 caracteres.");
       return;
     }
+    if (!aceitouTermos) {
+      setErro("Você precisa aceitar os Termos de Uso para criar sua conta.");
+      return;
+    }
     const papel = codigo.trim() === CODIGO_CATEQUISTA ? "catequista" : "aluno";
     let turmaId = null;
     if (papel === "aluno") {
@@ -892,6 +930,7 @@ function LoginScreen() {
         papel,
         turmaId,
         caminhada: papel === "aluno" ? { ...caminhadaVazia(), whatsapp: whatsapp.trim() } : null,
+        termosAceitosEm: new Date().toISOString(),
       });
     } catch (err) {
       setErro(traduzErroFirebase(err));
@@ -1027,6 +1066,17 @@ function LoginScreen() {
             <div style={styles.formRow}>
               <label style={styles.label}>Código de catequista (opcional)</label>
               <input style={styles.input} value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Deixe em branco se você é aluno" />
+            </div>
+
+            <div style={styles.formRow}>
+              <label style={styles.checkboxRow}>
+                <input type="checkbox" checked={aceitouTermos} onChange={(e) => setAceitouTermos(e.target.checked)} />
+                Li e aceito os Termos de Uso
+              </label>
+              <button type="button" style={{ ...styles.linkButton, alignSelf: "flex-start" }} onClick={() => setVerTermos(!verTermos)}>
+                {verTermos ? "Recolher termos ↑" : "Ler os Termos de Uso ↓"}
+              </button>
+              {verTermos && <TermosUsoTexto />}
             </div>
           </>
         )}
