@@ -1294,7 +1294,7 @@ function Liturgia({ role }) {
         ) : (
           <p style={styles.cardBody}>Hoje é dia ferial, sem memória fixa no nosso calendário.</p>
         )}
-        {!info.fixo && role === "catequista" && ia.data && (
+        {!info.fixo && role === "catequista" && celebracao && (
           <p style={{ ...styles.leitura, marginTop: 8 }}>
             Celebração extraída automaticamente da fonte abaixo — confirme no site oficial antes de anunciar em sala.
           </p>
