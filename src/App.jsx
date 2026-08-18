@@ -8,7 +8,7 @@ import { auth, db } from "./firebase.js";
 import {
   onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   signOut, sendPasswordResetEmail, updateProfile, EmailAuthProvider,
-  reauthenticateWithCredential, updatePassword,
+  reauthenticateWithCredential, updatePassword, updateEmail,
 } from "firebase/auth";
 import {
   collection, doc, getDoc, getDocs, setDoc, onSnapshot,
@@ -358,6 +358,7 @@ export default function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState(false);
+  const [mostrarPerfil, setMostrarPerfil] = useState(false);
 
   // Observa o login do Firebase. Quando alguém entra, escuta o próprio perfil em tempo real
   // (isso evita problemas de tempo logo após o cadastro, quando o perfil acaba de ser criado)
@@ -557,20 +558,27 @@ export default function App() {
         setTurmaAtualId={setTurmaAtualId}
         criarTurma={criarTurma}
         renomearTurma={renomearTurma}
+        onAbrirPerfil={() => setMostrarPerfil(true)}
       />
       <main style={styles.main}>
         {saveError && (
           <div style={styles.errorBanner}>Não foi possível salvar agora. Tente novamente em instantes.</div>
         )}
-        {tab === "inicio" && <Inicio data={data} setTab={setTab} />}
-        {tab === "liturgia" && <Liturgia role={role} />}
-        {tab === "cronograma" && <Cronograma data={data} persist={persist} role={role} session={effectiveSession} />}
-        {tab === "material" && <Material data={data} persist={persist} role={role} session={effectiveSession} />}
-        {tab === "caminhada" && (
-          <Caminhada users={users} persistUsers={persistUsers} session={effectiveSession} data={data} persist={persist} turmaAtualId={turmaAtualId} turmas={turmas} />
+        {mostrarPerfil ? (
+          <Perfil users={users} persistUsers={persistUsers} session={effectiveSession} onVoltar={() => setMostrarPerfil(false)} />
+        ) : (
+          <>
+            {tab === "inicio" && <Inicio data={data} setTab={setTab} />}
+            {tab === "liturgia" && <Liturgia role={role} />}
+            {tab === "cronograma" && <Cronograma data={data} persist={persist} role={role} session={effectiveSession} />}
+            {tab === "material" && <Material data={data} persist={persist} role={role} session={effectiveSession} />}
+            {tab === "caminhada" && (
+              <Caminhada users={users} persistUsers={persistUsers} session={effectiveSession} data={data} persist={persist} turmaAtualId={turmaAtualId} turmas={turmas} />
+            )}
+            {tab === "avisos" && <Avisos data={data} persist={persist} role={role} />}
+            {tab === "comunidade" && <Comunidade data={data} persist={persist} role={role} session={effectiveSession} users={users} turmaAtualId={turmaAtualId} />}
+          </>
         )}
-        {tab === "avisos" && <Avisos data={data} persist={persist} role={role} />}
-        {tab === "comunidade" && <Comunidade data={data} persist={persist} role={role} session={effectiveSession} users={users} turmaAtualId={turmaAtualId} />}
       </main>
       <footer style={styles.footer}>
         <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: 12, letterSpacing: "0.05em" }}>
@@ -589,6 +597,7 @@ function traduzErroFirebase(err) {
   if (code.includes("user-not-found") || code.includes("wrong-password") || code.includes("invalid-credential")) return "E-mail ou senha incorretos.";
   if (code.includes("too-many-requests")) return "Muitas tentativas seguidas. Aguarde um pouco e tente de novo.";
   if (code.includes("network-request-failed")) return "Falha de conexão. Verifique sua internet.";
+  if (code.includes("requires-recent-login")) return "Por segurança, saia e entre de novo antes de trocar o e-mail.";
   return "Algo deu errado. Tente novamente.";
 }
 
@@ -808,7 +817,7 @@ function LoginScreen() {
   );
 }
 
-function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewRole, role, turmas, turmaAtualId, setTurmaAtualId, criarTurma, renomearTurma }) {
+function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewRole, role, turmas, turmaAtualId, setTurmaAtualId, criarTurma, renomearTurma, onAbrirPerfil }) {
   const [criando, setCriando] = useState(false);
   const [nomeNovaTurma, setNomeNovaTurma] = useState("");
   const [codigoNovaTurma, setCodigoNovaTurma] = useState("");
@@ -844,7 +853,9 @@ function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewR
           <span style={styles.brandText}>Emaús</span>
         </div>
         <div style={styles.userBox}>
-          <span style={styles.userName}><User size={13} style={{ flexShrink: 0 }} /> <span style={styles.userNameText}>{session.nome}</span></span>
+          <button style={styles.userName} onClick={onAbrirPerfil} title="Meu perfil">
+            <User size={13} style={{ flexShrink: 0 }} /> <span style={styles.userNameText}>{session.nome}</span>
+          </button>
           {onLogout && <button style={styles.logoutButton} onClick={onLogout}><LogOut size={13} /></button>}
         </div>
       </div>
@@ -931,6 +942,155 @@ function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewR
         ))}
       </nav>
     </header>
+  );
+}
+
+function Perfil({ session, users, persistUsers, onVoltar }) {
+  const me = users.find((u) => u.id === session.id);
+  const [nome, setNome] = useState(me?.nome || "");
+  const [email, setEmail] = useState(me?.email || auth.currentUser?.email || "");
+  const [sobre, setSobre] = useState(me?.sobre || "");
+  const [salvo, setSalvo] = useState(false);
+  const [erroPerfil, setErroPerfil] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const [alterandoSenha, setAlterandoSenha] = useState(false);
+  const [senhaAtual, setSenhaAtual] = useState("");
+  const [novaSenhaPropria, setNovaSenhaPropria] = useState("");
+  const [confirmarSenhaPropria, setConfirmarSenhaPropria] = useState("");
+  const [erroSenhaPropria, setErroSenhaPropria] = useState("");
+  const [senhaAlterada, setSenhaAlterada] = useState(false);
+
+  const salvarPerfil = async () => {
+    setErroPerfil("");
+    if (!nome.trim() || !email.trim()) {
+      setErroPerfil("Nome e e-mail não podem ficar em branco.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      if (email.trim() !== (me?.email || auth.currentUser?.email || "")) {
+        await updateEmail(auth.currentUser, email.trim());
+      }
+      if (nome.trim() !== me?.nome) {
+        await updateProfile(auth.currentUser, { displayName: nome.trim() });
+      }
+      const next = users.map((u) => (u.id === session.id ? { ...u, nome: nome.trim(), email: email.trim(), sobre } : u));
+      await persistUsers(next);
+      setSalvo(true);
+      setTimeout(() => setSalvo(false), 2000);
+    } catch (err) {
+      setErroPerfil(traduzErroFirebase(err));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const alterarMinhaSenha = async () => {
+    setErroSenhaPropria("");
+    if (!novaSenhaPropria.trim()) {
+      setErroSenhaPropria("Digite a nova senha.");
+      return;
+    }
+    if (novaSenhaPropria !== confirmarSenhaPropria) {
+      setErroSenhaPropria("As senhas não conferem.");
+      return;
+    }
+    if (novaSenhaPropria.length < 6) {
+      setErroSenhaPropria("A senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    try {
+      const cred = EmailAuthProvider.credential(auth.currentUser.email, senhaAtual);
+      await reauthenticateWithCredential(auth.currentUser, cred);
+      await updatePassword(auth.currentUser, novaSenhaPropria);
+      setSenhaAtual("");
+      setNovaSenhaPropria("");
+      setConfirmarSenhaPropria("");
+      setAlterandoSenha(false);
+      setSenhaAlterada(true);
+      setTimeout(() => setSenhaAlterada(false), 2000);
+    } catch {
+      setErroSenhaPropria("Senha atual incorreta.");
+    }
+  };
+
+  return (
+    <div style={styles.stack}>
+      <button style={styles.linkButton} onClick={onVoltar}>← Voltar</button>
+      <h2 style={styles.sectionTitle}>Meu perfil</h2>
+
+      <section style={styles.card}>
+        <p style={styles.cardEyebrow}>DADOS PESSOAIS</p>
+        <div style={styles.formRow}>
+          <label style={styles.label}>Nome</label>
+          <input style={styles.input} value={nome} onChange={(e) => setNome(e.target.value)} />
+        </div>
+        <div style={styles.formRow}>
+          <label style={styles.label}>E-mail</label>
+          <input type="email" style={styles.input} value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div style={styles.formRow}>
+          <label style={styles.label}>Sobre mim / outras informações (opcional)</label>
+          <textarea
+            style={{ ...styles.input, minHeight: 70 }}
+            value={sobre}
+            onChange={(e) => setSobre(e.target.value)}
+            placeholder="Escreva o que quiser guardar aqui — telefone, observações, etc."
+          />
+        </div>
+        {erroPerfil && <p style={styles.loginErro}>{erroPerfil}</p>}
+        <button style={styles.saveButton} disabled={salvando} onClick={salvarPerfil}>
+          {salvo ? "Salvo ✓" : salvando ? "Salvando..." : "Salvar perfil"}
+        </button>
+      </section>
+
+      <section style={styles.card}>
+        <div style={styles.timelineHead}>
+          <p style={{ ...styles.cardEyebrow, margin: 0 }}>SENHA</p>
+          {!alterandoSenha && (
+            <button style={styles.linkButton} onClick={() => { setAlterandoSenha(true); setErroSenhaPropria(""); }}>
+              Alterar minha senha
+            </button>
+          )}
+        </div>
+        {!alterandoSenha && senhaAlterada && (
+          <p style={{ ...styles.cardBody, color: GOLD }}>Senha alterada ✓</p>
+        )}
+        {alterandoSenha && (
+          <div style={styles.formCard}>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Senha atual</label>
+              <input type="password" style={styles.input} value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} />
+            </div>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Nova senha</label>
+              <input type="password" style={styles.input} value={novaSenhaPropria} onChange={(e) => setNovaSenhaPropria(e.target.value)} />
+            </div>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Confirmar nova senha</label>
+              <input type="password" style={styles.input} value={confirmarSenhaPropria} onChange={(e) => setConfirmarSenhaPropria(e.target.value)} />
+            </div>
+            {erroSenhaPropria && <p style={styles.loginErro}>{erroSenhaPropria}</p>}
+            <div style={styles.formActions}>
+              <button
+                style={styles.cancelButton}
+                onClick={() => {
+                  setAlterandoSenha(false);
+                  setErroSenhaPropria("");
+                  setSenhaAtual("");
+                  setNovaSenhaPropria("");
+                  setConfirmarSenhaPropria("");
+                }}
+              >
+                <X size={14} /> Cancelar
+              </button>
+              <button style={styles.saveButton} onClick={alterarMinhaSenha}>Salvar nova senha</button>
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -1193,13 +1353,8 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   const [form, setForm] = useState({ ...caminhadaVazia(), ...(me?.caminhada || {}) });
   const [saved, setSaved] = useState(false);
   const [verLembranca, setVerLembranca] = useState(false);
-  const [alterandoSenha, setAlterandoSenha] = useState(false);
-  const [senhaAtual, setSenhaAtual] = useState("");
-  const [novaSenhaPropria, setNovaSenhaPropria] = useState("");
-  const [confirmarSenhaPropria, setConfirmarSenhaPropria] = useState("");
-  const [erroSenhaPropria, setErroSenhaPropria] = useState("");
-  const [senhaAlterada, setSenhaAlterada] = useState(false);
   const [encontroPresencaId, setEncontroPresencaId] = useState(null);
+  const [verRelatorio, setVerRelatorio] = useState(null);
 
   const today = todayISO();
   const ordenados = [...data.encontros].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999"));
@@ -1207,35 +1362,6 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   // Enquanto EXIGIR_LOGIN estiver desligado (fase de testes), libera a pré-visualização da
   // lembrança mesmo com encontros futuros na agenda, para facilitar a conferência do design.
   const turmaEncerrada = EXIGIR_LOGIN ? turmaEncerradaReal : (ordenados.length > 0 ? true : turmaEncerradaReal);
-
-  const alterarMinhaSenha = async () => {
-    setErroSenhaPropria("");
-    if (!novaSenhaPropria.trim()) {
-      setErroSenhaPropria("Digite a nova senha.");
-      return;
-    }
-    if (novaSenhaPropria !== confirmarSenhaPropria) {
-      setErroSenhaPropria("As senhas não conferem.");
-      return;
-    }
-    if (novaSenhaPropria.length < 6) {
-      setErroSenhaPropria("A senha precisa ter pelo menos 6 caracteres.");
-      return;
-    }
-    try {
-      const cred = EmailAuthProvider.credential(auth.currentUser.email, senhaAtual);
-      await reauthenticateWithCredential(auth.currentUser, cred);
-      await updatePassword(auth.currentUser, novaSenhaPropria);
-      setSenhaAtual("");
-      setNovaSenhaPropria("");
-      setConfirmarSenhaPropria("");
-      setAlterandoSenha(false);
-      setSenhaAlterada(true);
-      setTimeout(() => setSenhaAlterada(false), 2000);
-    } catch {
-      setErroSenhaPropria("Senha atual incorreta.");
-    }
-  };
 
   if (session.papel === "catequista") {
     const turmaAtual = (turmas || []).find((t) => t.id === turmaAtualId);
@@ -1255,6 +1381,79 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       persist({ ...data, encontros: nextEncontros });
     };
 
+    if (verRelatorio === "presenca") {
+      return (
+        <div style={styles.stack}>
+          <button style={styles.linkButton} onClick={() => setVerRelatorio(null)}>← Voltar</button>
+          <div className="imprimir-area">
+            <h2 style={styles.sectionTitle}>Relatório de presenças — {turmaAtual?.nome}</h2>
+            <div style={{ overflowX: "auto", marginTop: 12 }}>
+              <table style={styles.tabelaRelatorio}>
+                <thead>
+                  <tr>
+                    <th style={styles.tabelaTh}>Catecúmeno</th>
+                    {encontrosOrdenados.map((e) => (
+                      <th key={e.id} style={styles.tabelaTh}>{formatDate(e.data)}<br />{e.tema}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {alunos.map((a) => (
+                    <tr key={a.id}>
+                      <td style={styles.tabelaTd}>{a.nome}</td>
+                      {encontrosOrdenados.map((e) => {
+                        const p = e.presencas?.[a.id];
+                        return (
+                          <td key={e.id} style={{ ...styles.tabelaTd, textAlign: "center", color: p === true ? "#2E7D32" : p === false ? "#B3261E" : TEXT_MUTED }}>
+                            {p === true ? "Presente" : p === false ? "Ausente" : "—"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  {alunos.length === 0 && (
+                    <tr><td style={styles.tabelaTd} colSpan={encontrosOrdenados.length + 1}>Nenhum aluno cadastrado ainda.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <button style={styles.saveButton} onClick={() => window.print()}>Imprimir / Salvar como PDF</button>
+        </div>
+      );
+    }
+
+    if (verRelatorio === "caminhada") {
+      return (
+        <div style={styles.stack}>
+          <button style={styles.linkButton} onClick={() => setVerRelatorio(null)}>← Voltar</button>
+          <div className="imprimir-area" style={styles.stack}>
+            <h2 style={styles.sectionTitle}>Relatório da caminhada — {turmaAtual?.nome}</h2>
+            {alunos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
+            {alunos.map((a) => {
+              const c = a.caminhada || caminhadaVazia();
+              const sacramentos = [
+                { nome: "Batismo", feito: !!c.batismoData, detalhe: c.batismoData ? `${formatDate(c.batismoData)}${c.batismoLocal ? ` — ${c.batismoLocal}` : ""}` : null },
+                { nome: "Primeira Eucaristia", feito: !!c.eucaristiaData, detalhe: c.eucaristiaData ? `${formatDate(c.eucaristiaData)}${c.eucaristiaLocal ? ` — ${c.eucaristiaLocal}` : ""}` : null },
+                { nome: "Crisma", feito: !!c.crismaData, detalhe: c.crismaData ? `${formatDate(c.crismaData)}${c.crismaLocal ? ` — ${c.crismaLocal}` : ""}` : null },
+              ];
+              return (
+                <section key={a.id} style={styles.card}>
+                  <h3 style={styles.cardTitle}>{a.nome}</h3>
+                  {sacramentos.map((s) => (
+                    <p key={s.nome} style={{ ...styles.cardBody, color: s.feito ? "#2E7D32" : "#B3261E", fontWeight: 600 }}>
+                      {s.feito ? "✓" : "✗"} {s.nome}{s.feito ? ` — ${s.detalhe}` : " — falta registrar"}
+                    </p>
+                  ))}
+                </section>
+              );
+            })}
+          </div>
+          <button style={styles.saveButton} onClick={() => window.print()}>Imprimir / Salvar como PDF</button>
+        </div>
+      );
+    }
+
     return (
       <div style={styles.stack}>
         <h2 style={styles.sectionTitle}>Caminhada da turma</h2>
@@ -1267,6 +1466,14 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
             <p style={styles.leitura}>Compartilhe esse código com os catecúmenos — eles usam para se cadastrar nesta turma.</p>
           </div>
         )}
+
+        <div style={styles.card}>
+          <p style={styles.cardEyebrow}>RELATÓRIOS</p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button style={styles.addButton} onClick={() => setVerRelatorio("presenca")}><FileDown size={14} /> Presenças</button>
+            <button style={styles.addButton} onClick={() => setVerRelatorio("caminhada")}><FileDown size={14} /> Caminhada / sacramentos</button>
+          </div>
+        </div>
 
         <div style={styles.card}>
           <p style={styles.cardEyebrow}>PRESENÇA</p>
@@ -1377,14 +1584,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       </p>
 
       <section style={styles.card}>
-        <div style={styles.timelineHead}>
-          <p style={{ ...styles.cardEyebrow, margin: 0 }}>MINHA CONTA</p>
-          {!alterandoSenha && (
-            <button style={styles.linkButton} onClick={() => { setAlterandoSenha(true); setErroSenhaPropria(""); }}>
-              Alterar minha senha
-            </button>
-          )}
-        </div>
+        <p style={styles.cardEyebrow}>MINHA PRESENÇA</p>
         {(() => {
           const encontrosPassados = ordenados.filter((e) => e.data && e.data <= today);
           const minhasPresencas = encontrosPassados.filter((e) => e.autoPresencas?.[session.id]).length;
@@ -1394,41 +1594,6 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
             </p>
           );
         })()}
-        {!alterandoSenha && senhaAlterada && (
-          <p style={{ ...styles.cardBody, color: GOLD }}>Senha alterada ✓</p>
-        )}
-        {alterandoSenha && (
-          <div style={styles.formCard}>
-            <div style={styles.formRow}>
-              <label style={styles.label}>Senha atual</label>
-              <input type="password" style={styles.input} value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} />
-            </div>
-            <div style={styles.formRow}>
-              <label style={styles.label}>Nova senha</label>
-              <input type="password" style={styles.input} value={novaSenhaPropria} onChange={(e) => setNovaSenhaPropria(e.target.value)} />
-            </div>
-            <div style={styles.formRow}>
-              <label style={styles.label}>Confirmar nova senha</label>
-              <input type="password" style={styles.input} value={confirmarSenhaPropria} onChange={(e) => setConfirmarSenhaPropria(e.target.value)} />
-            </div>
-            {erroSenhaPropria && <p style={styles.loginErro}>{erroSenhaPropria}</p>}
-            <div style={styles.formActions}>
-              <button
-                style={styles.cancelButton}
-                onClick={() => {
-                  setAlterandoSenha(false);
-                  setErroSenhaPropria("");
-                  setSenhaAtual("");
-                  setNovaSenhaPropria("");
-                  setConfirmarSenhaPropria("");
-                }}
-              >
-                <X size={14} /> Cancelar
-              </button>
-              <button style={styles.saveButton} onClick={alterarMinhaSenha}>Salvar nova senha</button>
-            </div>
-          </div>
-        )}
       </section>
 
       {turmaEncerrada && (
@@ -2360,8 +2525,9 @@ function StyleSheet() {
       @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
       @media print {
         body * { visibility: hidden; }
-        #certificado-imprimir, #certificado-imprimir * { visibility: visible; }
-        #certificado-imprimir { position: absolute; left: 0; top: 0; width: 100%; }
+        #certificado-imprimir, #certificado-imprimir *,
+        .imprimir-area, .imprimir-area * { visibility: visible; }
+        #certificado-imprimir, .imprimir-area { position: absolute; left: 0; top: 0; width: 100%; }
       }
     `}</style>
   );
@@ -2436,7 +2602,7 @@ const styles = {
   loadingIcon: { width: 64, height: 64, borderRadius: R.box + 4, objectFit: "cover" },
   brandText: { fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: FS.xl, letterSpacing: "0.01em" },
   userBox: { display: "flex", alignItems: "center", gap: 8, minWidth: 0 },
-  userName: { display: "flex", alignItems: "center", gap: 6, fontSize: FS.sm, color: TEXT_MUTED, minWidth: 0, overflow: "hidden" },
+  userName: { display: "flex", alignItems: "center", gap: 6, fontSize: FS.sm, color: TEXT_MUTED, minWidth: 0, overflow: "hidden", background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "'Karla', sans-serif" },
   userNameText: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   logoutButton: { background: "rgba(46,36,23,0.06)", border: "none", borderRadius: R.icon, padding: 7, color: TEXT_LIGHT, cursor: "pointer", display: "flex", flexShrink: 0 },
   nav: {
@@ -2529,4 +2695,7 @@ const styles = {
   postCurtirButton: { display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(122,35,51,0.25)", color: TEXT_MUTED, borderRadius: R.pill, padding: "6px 12px", fontSize: FS.sm, marginTop: 12, cursor: "pointer" },
   postCurtirButtonAtivo: { background: "rgba(122,35,51,0.1)", color: GOLD, borderColor: GOLD },
   emptyState: { color: TEXT_MUTED, fontSize: FS.md, textAlign: "center", padding: "20px 0" },
+  tabelaRelatorio: { borderCollapse: "collapse", width: "100%", fontSize: FS.sm },
+  tabelaTh: { border: "1px solid rgba(46,36,23,0.15)", padding: "8px 10px", background: NAVY_DEEP, textAlign: "left", fontWeight: 700, whiteSpace: "nowrap" },
+  tabelaTd: { border: "1px solid rgba(46,36,23,0.15)", padding: "8px 10px", whiteSpace: "nowrap" },
 };
