@@ -2017,10 +2017,10 @@ function Material({ data, persist, role, session }) {
   const [openId, setOpenId] = useState(null);
 
   const startNew = () => {
-    setForm({ id: `m${Date.now()}`, encontroId: data.encontros[0]?.id || "", titulo: "", leitura: "", conteudo: "", paraProximoEncontro: "", videoUrl: "", comentarios: [], anexos: [], fonte: "" });
+    setForm({ id: `m${Date.now()}`, encontroId: data.encontros[0]?.id || "", titulo: "", leitura: "", conteudo: "", paraProximoEncontro: "", videoUrl: "", comentarios: [], anexos: [] });
     setEditing("new");
   };
-  const startEdit = (m) => { setForm({ comentarios: [], anexos: [], fonte: "", ...m }); setEditing(m.id); };
+  const startEdit = (m) => { setForm({ comentarios: [], anexos: [], ...m }); setEditing(m.id); };
   const cancel = () => { setEditing(null); setForm(null); };
 
   const save = () => {
@@ -2118,14 +2118,16 @@ function Material({ data, persist, role, session }) {
                     {(m.anexos || []).length > 0 && (
                       <div style={styles.anexosBox}>
                         {m.anexos.map((a) => (
-                          <a key={a.id} href={a.url} target="_blank" rel="noopener noreferrer" style={styles.anexoItem}>
-                            <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
-                            <span style={styles.anexoNome}>{a.nome}</span>
-                          </a>
+                          <div key={a.id}>
+                            <a href={a.url} target="_blank" rel="noopener noreferrer" style={styles.anexoItem}>
+                              <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
+                              <span style={styles.anexoNome}>{a.nome}</span>
+                            </a>
+                            {a.fonte && <p style={{ ...styles.leitura, margin: "3px 0 0 2px" }}>Fonte: {a.fonte}</p>}
+                          </div>
                         ))}
                       </div>
                     )}
-                    {m.fonte && <p style={{ ...styles.leitura, marginTop: 8 }}>Fonte: {m.fonte}</p>}
 
                     <Comentarios
                       item={m}
@@ -2167,7 +2169,7 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
       const ref = storageRef(storage, caminho);
       await uploadBytes(ref, file);
       const url = await getDownloadURL(ref);
-      const novo = { id: `x${Date.now()}`, nome: file.name, url, caminho };
+      const novo = { id: `x${Date.now()}`, nome: file.name, url, caminho, fonte: "" };
       setForm({ ...form, anexos: [...anexos, novo] });
     } catch (err) {
       alert("Não foi possível enviar o arquivo. Tente novamente.");
@@ -2182,6 +2184,10 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
     if (anexo.caminho) {
       deleteObject(storageRef(storage, anexo.caminho)).catch(() => {});
     }
+  };
+
+  const atualizarFonteAnexo = (anexoId, fonte) => {
+    setForm({ ...form, anexos: anexos.map((a) => (a.id === anexoId ? { ...a, fonte } : a)) });
   };
 
   return (
@@ -2223,10 +2229,18 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
         {anexos.length > 0 && (
           <div style={styles.anexosBox}>
             {anexos.map((a) => (
-              <div key={a.id} style={styles.anexoItem}>
-                <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
-                <span style={styles.anexoNome}>{a.nome}</span>
-                <button type="button" style={styles.iconButton} onClick={() => removerAnexo(a)}><Trash2 size={13} /></button>
+              <div key={a.id} style={styles.anexoCard}>
+                <div style={styles.anexoCardHead}>
+                  <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
+                  <span style={styles.anexoNome}>{a.nome}</span>
+                  <button type="button" style={styles.iconButton} onClick={() => removerAnexo(a)}><Trash2 size={13} /></button>
+                </div>
+                <input
+                  style={styles.input}
+                  value={a.fonte || ""}
+                  onChange={(e) => atualizarFonteAnexo(a.id, e.target.value)}
+                  placeholder="Fonte deste documento (opcional) — ex: Catecismo da Igreja Católica, nº 1213"
+                />
               </div>
             ))}
           </div>
@@ -2235,15 +2249,6 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
           <Upload size={14} /> {enviando ? "Enviando..." : "Adicionar arquivo"}
           <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={handleFile} disabled={enviando} />
         </label>
-      </div>
-      <div style={styles.formRow}>
-        <label style={styles.label}>Fonte do documento (opcional)</label>
-        <input
-          style={styles.input}
-          value={form.fonte || ""}
-          onChange={(e) => setForm({ ...form, fonte: e.target.value })}
-          placeholder="Ex: Catecismo da Igreja Católica, nº 1213"
-        />
       </div>
       <div style={styles.formActions}>
         <button style={styles.cancelButton} onClick={onCancel}><X size={14} /> Cancelar</button>
@@ -2796,6 +2801,8 @@ const styles = {
   anexosBox: { marginTop: 10, display: "flex", flexDirection: "column", gap: 6 },
   anexoItem: { display: "flex", alignItems: "center", gap: 8, background: "rgba(46,36,23,0.05)", border: "1px solid rgba(122,35,51,0.25)", borderRadius: R.icon, padding: "8px 12px", textDecoration: "none" },
   anexoNome: { flex: 1, fontSize: FS.md, color: TEXT_LIGHT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  anexoCard: { display: "flex", flexDirection: "column", gap: 6, background: "rgba(46,36,23,0.05)", border: "1px solid rgba(122,35,51,0.25)", borderRadius: R.icon, padding: "8px 12px" },
+  anexoCardHead: { display: "flex", alignItems: "center", gap: 8 },
   anexoUploadButton: { display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(46,36,23,0.06)", border: "1px dashed rgba(122,35,51,0.4)", borderRadius: R.icon, padding: "8px 12px", fontSize: FS.base, color: GOLD, cursor: "pointer", width: "fit-content", marginTop: 4 },
   videoWrap: { position: "relative", width: "100%", paddingTop: "56.25%", marginTop: 14, borderRadius: R.button, overflow: "hidden", background: "#000" },
   videoFrame: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" },
