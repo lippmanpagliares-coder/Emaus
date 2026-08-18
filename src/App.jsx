@@ -2351,6 +2351,8 @@ function StyleSheet() {
     <style>{`
       @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Karla:wght@400;500;600;700&family=Courier+Prime:wght@400;700&display=swap');
       * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: #E6DCC8; overflow-x: hidden; width: 100%; }
+      #root { overflow-x: hidden; }
       input, textarea, select, button { font-family: 'Karla', sans-serif; }
       input:focus, textarea:focus, select:focus, button:focus-visible {
         outline: 2px solid #7A2333; outline-offset: 2px;
