@@ -1281,6 +1281,11 @@ function Perfil({ session, users, persistUsers, onVoltar }) {
   const [erroSenhaPropria, setErroSenhaPropria] = useState("");
   const [senhaAlterada, setSenhaAlterada] = useState(false);
 
+  const [excluindoConta, setExcluindoConta] = useState(false);
+  const [senhaExclusao, setSenhaExclusao] = useState("");
+  const [erroExclusao, setErroExclusao] = useState("");
+  const [apagando, setApagando] = useState(false);
+
   const salvarPerfil = async () => {
     setErroPerfil("");
     if (!nome.trim() || !email.trim()) {
@@ -1332,6 +1337,28 @@ function Perfil({ session, users, persistUsers, onVoltar }) {
       setTimeout(() => setSenhaAlterada(false), 2000);
     } catch {
       setErroSenhaPropria("Senha atual incorreta.");
+    }
+  };
+
+  const excluirMinhaConta = async () => {
+    setErroExclusao("");
+    if (!senhaExclusao) {
+      setErroExclusao("Digite sua senha pra confirmar.");
+      return;
+    }
+    const ok = window.confirm(
+      "Excluir sua conta?\n\nIsso apaga PERMANENTEMENTE seu cadastro e os dados da sua caminhada (sacramentos, presenças, mensagens etc. continuam associados à turma, mas sua conta some).\n\nEssa ação não pode ser desfeita."
+    );
+    if (!ok) return;
+    setApagando(true);
+    try {
+      const cred = EmailAuthProvider.credential(auth.currentUser.email, senhaExclusao);
+      await reauthenticateWithCredential(auth.currentUser, cred);
+      await deleteDoc(doc(db, "usuarios", session.id));
+      await auth.currentUser.delete();
+    } catch {
+      setErroExclusao("Senha incorreta.");
+      setApagando(false);
     }
   };
 
@@ -1406,6 +1433,42 @@ function Perfil({ session, users, persistUsers, onVoltar }) {
                 <X size={14} /> Cancelar
               </button>
               <button style={styles.saveButton} onClick={alterarMinhaSenha}>Salvar nova senha</button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section style={{ ...styles.card, border: "1px solid rgba(232,146,124,0.4)" }}>
+        <div style={styles.timelineHead}>
+          <p style={{ ...styles.cardEyebrow, margin: 0, color: "#E8927C" }}>EXCLUIR CONTA</p>
+          {!excluindoConta && (
+            <button style={styles.linkButton} onClick={() => { setExcluindoConta(true); setErroExclusao(""); }}>
+              Excluir minha conta
+            </button>
+          )}
+        </div>
+        {!excluindoConta ? (
+          <p style={styles.cardBody}>
+            Apaga permanentemente seu cadastro e o que você preencheu em "Minha Caminhada". Essa ação não pode ser desfeita.
+          </p>
+        ) : (
+          <div style={styles.formCard}>
+            <p style={styles.cardBody}>Digite sua senha pra confirmar a exclusão da sua conta.</p>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Senha</label>
+              <input type="password" style={styles.input} value={senhaExclusao} onChange={(e) => setSenhaExclusao(e.target.value)} />
+            </div>
+            {erroExclusao && <p style={styles.loginErro}>{erroExclusao}</p>}
+            <div style={styles.formActions}>
+              <button
+                style={styles.cancelButton}
+                onClick={() => { setExcluindoConta(false); setErroExclusao(""); setSenhaExclusao(""); }}
+              >
+                <X size={14} /> Cancelar
+              </button>
+              <button style={styles.saveButton} disabled={apagando} onClick={excluirMinhaConta}>
+                {apagando ? "Excluindo..." : "Excluir minha conta"}
+              </button>
             </div>
           </div>
         )}
