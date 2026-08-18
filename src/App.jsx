@@ -754,6 +754,7 @@ function LoginScreen() {
   const [confirmar, setConfirmar] = useState("");
   const [codigo, setCodigo] = useState("");
   const [codigoTurma, setCodigoTurma] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [erro, setErro] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [turmas, setTurmas] = useState(null);
@@ -818,7 +819,7 @@ function LoginScreen() {
         email: email.trim(),
         papel,
         turmaId,
-        caminhada: papel === "aluno" ? caminhadaVazia() : null,
+        caminhada: papel === "aluno" ? { ...caminhadaVazia(), whatsapp: whatsapp.trim() } : null,
       });
     } catch (err) {
       setErro(traduzErroFirebase(err));
@@ -939,6 +940,16 @@ function LoginScreen() {
                 value={codigoTurma}
                 onChange={(e) => setCodigoTurma(e.target.value)}
                 placeholder="Peça o código para a catequista"
+              />
+            </div>
+            <div style={styles.formRow}>
+              <label style={styles.label}>WhatsApp (opcional)</label>
+              <input
+                type="tel"
+                style={styles.input}
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
+                placeholder="(11) 91234-5678"
               />
             </div>
             <div style={styles.formRow}>
