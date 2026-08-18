@@ -1834,7 +1834,7 @@ function Cronograma({ data, persist, role, session }) {
                 {editing === e.id ? (
                   <EncontroForm form={form} setForm={setForm} onSave={save} onCancel={cancel} />
                 ) : (
-                  <>
+                  <div style={styles.card}>
                     <div style={styles.timelineHead}>
                       <span style={styles.timelineDate}>{formatDate(e.data)}</span>
                       {role === "catequista" && (
@@ -1859,7 +1859,7 @@ function Cronograma({ data, persist, role, session }) {
                         </label>
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             </div>
