@@ -1077,7 +1077,7 @@ function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewR
               onClick={() => setPreviewRole("aluno")}
               style={{ ...styles.rolePill, ...(previewRole === "aluno" ? styles.rolePillActive : {}) }}
             >
-              Catecúmeno
+              Catequizando
             </button>
           </div>
         </div>
@@ -1758,7 +1758,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
     const nomeArquivo = (base) => `${base}-${(turmaAtual?.nome || "turma").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-")}.xlsx`;
 
     const exportarRelatorioPresencas = () => {
-      const cabecalho = ["Catecúmeno", ...encontrosOrdenados.map((e) => `${formatDate(e.data)} — ${e.tema}`)];
+      const cabecalho = ["Catequizando", ...encontrosOrdenados.map((e) => `${formatDate(e.data)} — ${e.tema}`)];
       const linhas = alunosTodos.map((a) => [
         a.nome,
         ...encontrosOrdenados.map((e) => {
@@ -1773,7 +1773,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
     };
 
     const exportarRelatorioCaminhada = () => {
-      const cabecalho = ["Catecúmeno", "WhatsApp", "Nascimento", ...SACRAMENTOS_CONFIG.map((s) => s.titulo)];
+      const cabecalho = ["Catequizando", "WhatsApp", "Nascimento", ...SACRAMENTOS_CONFIG.map((s) => s.titulo)];
       const linhas = alunosTodos.map((a) => {
         const c = a.caminhada || caminhadaVazia();
         const nascimento = c.nascimentoDia && c.nascimentoMes
@@ -1792,7 +1792,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       return (
         <div style={styles.stack}>
           <button style={styles.linkButton} onClick={cancelarManual}>← Voltar</button>
-          <h2 style={styles.sectionTitle}>{editandoManualId === "new" ? "Novo catecúmeno" : "Editar catecúmeno"}</h2>
+          <h2 style={styles.sectionTitle}>{editandoManualId === "new" ? "Novo catequizando" : "Editar catequizando"}</h2>
           <p style={styles.leitura}>
             Use isso para quem não quer ou não consegue criar conta no app — o cadastro fica só aqui,
             visível pra você. Todos os campos abaixo, além do nome, são opcionais.
@@ -1825,7 +1825,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
             />
           ))}
 
-          <button style={styles.saveButton} onClick={salvarManual}>Salvar catecúmeno</button>
+          <button style={styles.saveButton} onClick={salvarManual}>Salvar catequizando</button>
         </div>
       );
     }
@@ -1927,10 +1927,10 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       return (
         <div style={styles.stack}>
           <button style={styles.linkButton} onClick={() => setVerCatecumenos(false)}>← Voltar</button>
-          <h2 style={styles.sectionTitle}>Catecúmenos da turma</h2>
+          <h2 style={styles.sectionTitle}>Catequizandos da turma</h2>
           <div style={styles.card}>
             {alunosTodos.length === 0 ? (
-              <p style={styles.emptyState}>Nenhum catecúmeno cadastrado ainda.</p>
+              <p style={styles.emptyState}>Nenhum catequizando cadastrado ainda.</p>
             ) : (
               <div style={styles.stack}>
                 {[...alunosTodos].sort((a, b) => a.nome.localeCompare(b.nome)).map((a) => {
@@ -1965,7 +1965,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
               </div>
             )}
             <button style={{ ...styles.addButton, marginTop: 12 }} onClick={iniciarNovoManual}>
-              <Plus size={14} /> Adicionar catecúmeno manualmente
+              <Plus size={14} /> Adicionar catequizando manualmente
             </button>
             <p style={styles.leitura}>Use para quem não quer ou não consegue criar conta no app — o cadastro fica só aqui, visível pra você.</p>
           </div>
@@ -2042,7 +2042,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
             <p style={{ ...styles.cardTitle, fontFamily: "'Courier Prime', monospace", letterSpacing: "0.05em" }}>
               {turmaAtual.codigoConvite}
             </p>
-            <p style={styles.leitura}>Compartilhe esse código com os catecúmenos — eles usam para se cadastrar nesta turma.</p>
+            <p style={styles.leitura}>Compartilhe esse código com os catequizandos — eles usam para se cadastrar nesta turma.</p>
           </div>
         )}
 
@@ -2094,7 +2094,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
         <div style={styles.card}>
           <p style={styles.cardEyebrow}>MAIS SOBRE A TURMA</p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button style={styles.addButton} onClick={() => setVerCatecumenos(true)}><User size={14} /> Catecúmenos da turma</button>
+            <button style={styles.addButton} onClick={() => setVerCatecumenos(true)}><User size={14} /> Catequizandos da turma</button>
             <button style={styles.addButton} onClick={() => setVerCalendario(true)}><Calendar size={14} /> Calendário de aulas</button>
             <button style={styles.addButton} onClick={() => setVerRelatorios(true)}><FileDown size={14} /> Relatórios</button>
             <button style={styles.addButton} onClick={() => setVerCaminhadaTurma(true)}><Compass size={14} /> Caminhada da turma</button>
