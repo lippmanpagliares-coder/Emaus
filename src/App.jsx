@@ -1614,6 +1614,9 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   const [verLembranca, setVerLembranca] = useState(false);
   const [encontroPresencaId, setEncontroPresencaId] = useState(null);
   const [verCalendario, setVerCalendario] = useState(false);
+  const [verCatecumenos, setVerCatecumenos] = useState(false);
+  const [verRelatorios, setVerRelatorios] = useState(false);
+  const [verCaminhadaTurma, setVerCaminhadaTurma] = useState(false);
   const [nomeFerias, setNomeFerias] = useState("");
   const [inicioFerias, setInicioFerias] = useState("");
   const [fimFerias, setFimFerias] = useState("");
@@ -1878,6 +1881,110 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       );
     }
 
+    if (verCatecumenos) {
+      return (
+        <div style={styles.stack}>
+          <button style={styles.linkButton} onClick={() => setVerCatecumenos(false)}>← Voltar</button>
+          <h2 style={styles.sectionTitle}>Catecúmenos da turma</h2>
+          <div style={styles.card}>
+            {alunosTodos.length === 0 ? (
+              <p style={styles.emptyState}>Nenhum catecúmeno cadastrado ainda.</p>
+            ) : (
+              <div style={styles.stack}>
+                {[...alunosTodos].sort((a, b) => a.nome.localeCompare(b.nome)).map((a) => {
+                  const c = a.caminhada || {};
+                  const nascimento = c.nascimentoDia && c.nascimentoMes
+                    ? `${c.nascimentoDia} de ${MESES_NOME[Number(c.nascimentoMes) - 1]}${c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}`
+                    : "Data de nascimento não informada";
+                  return (
+                    <div key={a.id} style={styles.timelineHead}>
+                      <span style={styles.cardBody}>
+                        {a.nome}
+                        {a.manual && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, marginLeft: 6 }}>(cadastro manual)</span>}
+                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: FS.sm, color: TEXT_MUTED }}>{nascimento}</span>
+                        {a.manual && (
+                          <div style={styles.rowActions}>
+                            <button style={styles.iconButton} onClick={() => iniciarEditarManual(a)}><Pencil size={13} /></button>
+                            <button style={styles.iconButton} onClick={() => removerManual(a.id)}><Trash2 size={13} /></button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <button style={{ ...styles.addButton, marginTop: 12 }} onClick={iniciarNovoManual}>
+              <Plus size={14} /> Adicionar catecúmeno manualmente
+            </button>
+            <p style={styles.leitura}>Use para quem não quer ou não consegue criar conta no app — o cadastro fica só aqui, visível pra você.</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (verRelatorios) {
+      return (
+        <div style={styles.stack}>
+          <button style={styles.linkButton} onClick={() => setVerRelatorios(false)}>← Voltar</button>
+          <h2 style={styles.sectionTitle}>Relatórios</h2>
+          <div style={styles.card}>
+            <p style={styles.leitura}>Baixa uma planilha Excel (.xlsx) com os dados, pronta pra abrir.</p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button style={styles.addButton} onClick={exportarRelatorioPresencas}><FileDown size={14} /> Presenças</button>
+              <button style={styles.addButton} onClick={exportarRelatorioCaminhada}><FileDown size={14} /> Caminhada / sacramentos</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (verCaminhadaTurma) {
+      return (
+        <div style={styles.stack}>
+          <button style={styles.linkButton} onClick={() => setVerCaminhadaTurma(false)}>← Voltar</button>
+          <h2 style={styles.sectionTitle}>Caminhada da turma</h2>
+          {alunosTodos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
+          {alunosTodos.map((a) => {
+            const c = a.caminhada || caminhadaVazia();
+            const preenchido = c.nascimentoDia || SACRAMENTOS_CONFIG.some((s) => c[`${s.prefixo}Status`]);
+            return (
+              <div key={a.id} style={styles.card}>
+                <div style={styles.timelineHead}>
+                  <h3 style={styles.cardTitle}>{a.nome}</h3>
+                  {a.manual && (
+                    <div style={styles.rowActions}>
+                      <button style={styles.iconButton} onClick={() => iniciarEditarManual(a)}><Pencil size={13} /></button>
+                      <button style={styles.iconButton} onClick={() => removerManual(a.id)}><Trash2 size={13} /></button>
+                    </div>
+                  )}
+                </div>
+                {!preenchido && <p style={styles.emptyState}>Ainda não preencheu a caminhada.</p>}
+                {c.nascimentoDia && c.nascimentoMes && (
+                  <p style={styles.cardBody}>
+                    Nascimento: {c.nascimentoDia} de {MESES_NOME[Number(c.nascimentoMes) - 1]}{c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}{c.nascimentoLocal ? ` — ${c.nascimentoLocal}` : ""}
+                  </p>
+                )}
+                {SACRAMENTOS_CONFIG.map((s) => {
+                  const r = resumoSacramento(c, s.prefixo, s.titulo);
+                  if (r.feito === null) return null;
+                  const Icon = s.icon;
+                  return (
+                    <p key={s.prefixo} style={{ ...styles.cardBody, ...(r.feito ? {} : { color: TEXT_MUTED }) }}>
+                      <Icon size={13} style={{ marginRight: 4 }} />
+                      {r.titulo}: {r.detalhe}
+                    </p>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
     return (
       <div style={styles.stack}>
         <h2 style={styles.sectionTitle}>Caminhada da turma</h2>
@@ -1890,62 +1997,6 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
             <p style={styles.leitura}>Compartilhe esse código com os catecúmenos — eles usam para se cadastrar nesta turma.</p>
           </div>
         )}
-
-        <div style={styles.card}>
-          <p style={styles.cardEyebrow}>CATECÚMENOS DA TURMA</p>
-          {alunosTodos.length === 0 ? (
-            <p style={styles.emptyState}>Nenhum catecúmeno cadastrado ainda.</p>
-          ) : (
-            <div style={styles.stack}>
-              {[...alunosTodos].sort((a, b) => a.nome.localeCompare(b.nome)).map((a) => {
-                const c = a.caminhada || {};
-                const nascimento = c.nascimentoDia && c.nascimentoMes
-                  ? `${c.nascimentoDia} de ${MESES_NOME[Number(c.nascimentoMes) - 1]}${c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}`
-                  : "Data de nascimento não informada";
-                return (
-                  <div key={a.id} style={styles.timelineHead}>
-                    <span style={styles.cardBody}>
-                      {a.nome}
-                      {a.manual && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, marginLeft: 6 }}>(cadastro manual)</span>}
-                    </span>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: FS.sm, color: TEXT_MUTED }}>{nascimento}</span>
-                      {a.manual && (
-                        <div style={styles.rowActions}>
-                          <button style={styles.iconButton} onClick={() => iniciarEditarManual(a)}><Pencil size={13} /></button>
-                          <button style={styles.iconButton} onClick={() => removerManual(a.id)}><Trash2 size={13} /></button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          <button style={{ ...styles.addButton, marginTop: 12 }} onClick={iniciarNovoManual}>
-            <Plus size={14} /> Adicionar catecúmeno manualmente
-          </button>
-          <p style={styles.leitura}>Use para quem não quer ou não consegue criar conta no app — o cadastro fica só aqui, visível pra você.</p>
-        </div>
-
-        <div style={styles.card}>
-          <p style={styles.cardEyebrow}>CALENDÁRIO DE AULAS</p>
-          <p style={styles.cardBody}>
-            {diasAula.length > 0
-              ? `${diasComAula} de ${diasAula.length} datas programadas com aula.`
-              : "Defina o período letivo para saber quantos encontros vocês vão ter no ano."}
-          </p>
-          <button style={styles.addButton} onClick={() => setVerCalendario(true)}><Calendar size={14} /> Configurar calendário</button>
-        </div>
-
-        <div style={styles.card}>
-          <p style={styles.cardEyebrow}>RELATÓRIOS</p>
-          <p style={styles.leitura}>Baixa uma planilha Excel (.xlsx) com os dados, pronta pra abrir.</p>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button style={styles.addButton} onClick={exportarRelatorioPresencas}><FileDown size={14} /> Presenças</button>
-            <button style={styles.addButton} onClick={exportarRelatorioCaminhada}><FileDown size={14} /> Caminhada / sacramentos</button>
-          </div>
-        </div>
 
         <div style={styles.card}>
           <p style={styles.cardEyebrow}>PRESENÇA</p>
@@ -1992,41 +2043,15 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
           )}
         </div>
 
-        {alunosTodos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
-        {alunosTodos.map((a) => {
-          const c = a.caminhada || caminhadaVazia();
-          const preenchido = c.nascimentoDia || SACRAMENTOS_CONFIG.some((s) => c[`${s.prefixo}Status`]);
-          return (
-            <div key={a.id} style={styles.card}>
-              <div style={styles.timelineHead}>
-                <h3 style={styles.cardTitle}>{a.nome}</h3>
-                {a.manual && (
-                  <div style={styles.rowActions}>
-                    <button style={styles.iconButton} onClick={() => iniciarEditarManual(a)}><Pencil size={13} /></button>
-                    <button style={styles.iconButton} onClick={() => removerManual(a.id)}><Trash2 size={13} /></button>
-                  </div>
-                )}
-              </div>
-              {!preenchido && <p style={styles.emptyState}>Ainda não preencheu a caminhada.</p>}
-              {c.nascimentoDia && c.nascimentoMes && (
-                <p style={styles.cardBody}>
-                  Nascimento: {c.nascimentoDia} de {MESES_NOME[Number(c.nascimentoMes) - 1]}{c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}{c.nascimentoLocal ? ` — ${c.nascimentoLocal}` : ""}
-                </p>
-              )}
-              {SACRAMENTOS_CONFIG.map((s) => {
-                const r = resumoSacramento(c, s.prefixo, s.titulo);
-                if (r.feito === null) return null;
-                const Icon = s.icon;
-                return (
-                  <p key={s.prefixo} style={{ ...styles.cardBody, ...(r.feito ? {} : { color: TEXT_MUTED }) }}>
-                    <Icon size={13} style={{ marginRight: 4 }} />
-                    {r.titulo}: {r.detalhe}
-                  </p>
-                );
-              })}
-            </div>
-          );
-        })}
+        <div style={styles.card}>
+          <p style={styles.cardEyebrow}>MAIS SOBRE A TURMA</p>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button style={styles.addButton} onClick={() => setVerCatecumenos(true)}><User size={14} /> Catecúmenos da turma</button>
+            <button style={styles.addButton} onClick={() => setVerCalendario(true)}><Calendar size={14} /> Calendário de aulas</button>
+            <button style={styles.addButton} onClick={() => setVerRelatorios(true)}><FileDown size={14} /> Relatórios</button>
+            <button style={styles.addButton} onClick={() => setVerCaminhadaTurma(true)}><Compass size={14} /> Caminhada da turma</button>
+          </div>
+        </div>
       </div>
     );
   }
