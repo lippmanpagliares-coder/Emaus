@@ -148,7 +148,7 @@ function todayWeekdayLabel() {
 // vertical-align não tem efeito dentro de containers display:flex (como o cardBody).
 function comOrdinalSuperescrito(texto) {
   if (!texto) return texto;
-  const estiloOrdinal = { fontSize: "0.7em", position: "relative", top: "-0.5em" };
+  const estiloOrdinal = { fontSize: "0.7em", position: "relative", top: "-0.5em", marginRight: "0.2em" };
   return texto.split(/([ªº])/).map((parte, i) =>
     parte === "ª" || parte === "º" ? <sup key={i} style={estiloOrdinal}>{parte}</sup> : parte
   );
@@ -2395,7 +2395,33 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
   const [linkUrl, setLinkUrl] = useState("");
   const [comentandoId, setComentandoId] = useState(null);
   const [sugestoesMencao, setSugestoesMencao] = useState([]);
+  const [anexo, setAnexo] = useState(null);
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const textareaRef = useRef(null);
+  const anexoInputRef = useRef(null);
+
+  const handleAnexo = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEnviandoAnexo(true);
+    try {
+      const caminho = `comunidade/${Date.now()}-${file.name}`;
+      const ref = storageRef(storage, caminho);
+      await uploadBytes(ref, file);
+      const url = await getDownloadURL(ref);
+      setAnexo({ nome: file.name, url, caminho, ehImagem: file.type.startsWith("image/") });
+    } catch (err) {
+      alert("Não foi possível enviar o arquivo. Tente novamente.");
+    } finally {
+      setEnviandoAnexo(false);
+      if (anexoInputRef.current) anexoInputRef.current.value = "";
+    }
+  };
+
+  const removerAnexo = () => {
+    if (anexo?.caminho) deleteObject(storageRef(storage, anexo.caminho)).catch(() => {});
+    setAnexo(null);
+  };
 
   const membrosTurma = (users || []).filter((u) => u.papel === "catequista" || u.turmaId === turmaAtualId);
 
@@ -2466,7 +2492,7 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
   }, [aniversariantes.map((a) => a.id).join(","), turmaAtualId]);
 
   const postar = () => {
-    if (!texto.trim()) return;
+    if (!texto.trim() && !anexo) return;
     const corpo = tipo === "link" && linkUrl.trim() ? `${texto.trim()}\n${linkUrl.trim()}` : texto.trim();
     const novo = {
       id: `p${Date.now()}`,
@@ -2474,6 +2500,7 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
       autorId: session?.id || null,
       tipo,
       texto: corpo,
+      anexo: anexo || null,
       criadoEm: new Date().toISOString(),
       curtidas: [],
       comentarios: [],
@@ -2482,6 +2509,7 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
     setTexto("");
     setLinkUrl("");
     setTipo("geral");
+    setAnexo(null);
   };
 
   const remover = (id) => persist({ ...data, posts: posts.filter((p) => p.id !== id) });
@@ -2570,6 +2598,25 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
             placeholder="Cole o link aqui (https://...)"
           />
         )}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+          <label style={styles.anexoUploadButton}>
+            <Upload size={14} /> {enviandoAnexo ? "Enviando..." : "Adicionar foto ou arquivo"}
+            <input ref={anexoInputRef} type="file" style={{ display: "none" }} onChange={handleAnexo} disabled={enviandoAnexo} />
+          </label>
+          {anexo && (
+            <div style={styles.postAnexoPreview}>
+              {anexo.ehImagem ? (
+                <img src={anexo.url} alt="" style={styles.postAnexoImagemPreview} />
+              ) : (
+                <>
+                  <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
+                  <span style={styles.anexoNome}>{anexo.nome}</span>
+                </>
+              )}
+              <button type="button" style={styles.iconButton} onClick={removerAnexo}><Trash2 size={13} /></button>
+            </div>
+          )}
+        </div>
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
           <button style={styles.saveButton} onClick={postar}><Send size={13} style={{ marginRight: 5 }} />Postar</button>
         </div>
@@ -2593,7 +2640,19 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
                 )}
               </div>
               {post.tipo === "oracao" && <p style={styles.postTipoBadge}><Heart size={12} style={{ marginRight: 4 }} />Pedido de oração</p>}
-              <p style={{ ...styles.cardBody, whiteSpace: "pre-wrap" }}>{renderizarTexto(post.texto)}</p>
+              {post.texto && <p style={{ ...styles.cardBody, whiteSpace: "pre-wrap" }}>{renderizarTexto(post.texto)}</p>}
+              {post.anexo && (
+                post.anexo.ehImagem ? (
+                  <a href={post.anexo.url} target="_blank" rel="noopener noreferrer">
+                    <img src={post.anexo.url} alt="" style={styles.postAnexoImagem} />
+                  </a>
+                ) : (
+                  <a href={post.anexo.url} target="_blank" rel="noopener noreferrer" style={{ ...styles.anexoItem, marginTop: 8 }}>
+                    <Paperclip size={14} style={{ flexShrink: 0, color: GOLD }} />
+                    <span style={styles.anexoNome}>{post.anexo.nome}</span>
+                  </a>
+                )
+              )}
               <div style={{ display: "flex", gap: 10 }}>
                 <button
                   style={{ ...styles.postCurtirButton, ...(curtiu ? styles.postCurtirButtonAtivo : {}) }}
@@ -2806,6 +2865,9 @@ const styles = {
   anexoNome: { flex: 1, fontSize: FS.md, color: TEXT_LIGHT, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   anexoCard: { display: "flex", flexDirection: "column", gap: 6, background: "rgba(46,36,23,0.05)", border: "1px solid rgba(122,35,51,0.25)", borderRadius: R.icon, padding: "8px 12px" },
   anexoCardHead: { display: "flex", alignItems: "center", gap: 8 },
+  postAnexoPreview: { display: "flex", alignItems: "center", gap: 8, background: "rgba(46,36,23,0.05)", border: "1px solid rgba(122,35,51,0.25)", borderRadius: R.icon, padding: "6px 10px" },
+  postAnexoImagemPreview: { width: 44, height: 44, objectFit: "cover", borderRadius: R.icon, flexShrink: 0 },
+  postAnexoImagem: { width: "100%", maxHeight: 280, objectFit: "cover", borderRadius: R.button, marginTop: 10, display: "block", cursor: "pointer" },
   anexoUploadButton: { display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(46,36,23,0.06)", border: "1px dashed rgba(122,35,51,0.4)", borderRadius: R.icon, padding: "8px 12px", fontSize: FS.base, color: GOLD, cursor: "pointer", width: "fit-content", marginTop: 4 },
   videoWrap: { position: "relative", width: "100%", paddingTop: "56.25%", marginTop: 14, borderRadius: R.button, overflow: "hidden", background: "#000" },
   videoFrame: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" },
