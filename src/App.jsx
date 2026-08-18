@@ -3246,7 +3246,7 @@ const styles = {
   linkButton: { background: "none", border: "none", color: GOLD, fontSize: FS.base, fontWeight: 500, padding: 0, marginTop: 10, cursor: "pointer" },
   liturgiaLinks: { display: "flex", flexDirection: "column", gap: 8, marginTop: 10 },
   liturgiaLink: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(46,36,23,0.05)", border: "1px solid rgba(122,35,51,0.3)", borderRadius: R.button, padding: "10px 14px", color: TEXT_LIGHT, fontSize: FS.md },
-  avisoTitleSmall: { display: "flex", alignItems: "center", fontFamily: "'Cormorant Garamond', serif", fontWeight: 500, fontSize: FS.lg, margin: "6px 0 2px" },
+  avisoTitleSmall: { display: "flex", alignItems: "center", fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: FS.display, margin: "6px 0 2px" },
   sectionHeaderRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-end" },
   sectionTitle: { fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: FS.section, margin: 0, borderBottom: `3px solid ${GOLD}`, display: "inline-block", paddingBottom: 6 },
   addButton: { display: "flex", alignItems: "center", gap: 6, background: `linear-gradient(180deg, ${GOLD_LIGHT}, ${GOLD})`, color: ON_ACCENT, border: "none", borderRadius: R.button, padding: "8px 14px", fontSize: FS.base, fontWeight: 600, cursor: "pointer", boxShadow: "0 6px 16px -8px rgba(122,35,51,0.5)" },
