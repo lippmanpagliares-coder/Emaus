@@ -790,7 +790,16 @@ export default function App() {
             {tab === "cronograma" && <Cronograma data={data} persist={persist} role={effectiveRole} session={effectiveSession} />}
             {tab === "material" && <Material data={data} persist={persist} role={effectiveRole} session={effectiveSession} />}
             {tab === "caminhada" && (
-              <Caminhada users={users} persistUsers={persistUsers} session={effectiveSession} data={data} persist={persist} turmaAtualId={turmaAtualId} turmas={turmas} />
+              <Caminhada
+                users={users}
+                persistUsers={persistUsers}
+                session={effectiveSession}
+                data={data}
+                persist={persist}
+                turmaAtualId={turmaAtualId}
+                turmas={turmas}
+                onCatequizandoExcluido={(uid) => setUsers((prev) => (prev || []).filter((u) => u.id !== uid))}
+              />
             )}
             {tab === "avisos" && <Avisos data={data} persist={persist} role={effectiveRole} />}
             {tab === "comunidade" && <Comunidade data={data} persist={persist} role={effectiveRole} session={effectiveSession} users={users} turmaAtualId={turmaAtualId} />}
@@ -1874,7 +1883,7 @@ function SacramentoCard({ icon: Icon, titulo, prefixo, form, setForm }) {
   );
 }
 
-function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, turmas }) {
+function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, turmas, onCatequizandoExcluido }) {
   const me = users.find((u) => u.id === session.id);
   const [form, setForm] = useState({ ...caminhadaVazia(), ...(me?.caminhada || {}) });
   const [saved, setSaved] = useState(false);
@@ -1931,6 +1940,39 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       ...data,
       catecumenosManuais: catecumenosManuais.map((m) => (m.id === manualId ? { ...m, vinculadoAId: null } : m)),
     });
+  };
+
+  const [excluindoContaId, setExcluindoContaId] = useState(null);
+  const [erroExclusaoConta, setErroExclusaoConta] = useState("");
+
+  // Excluir a conta de um catequizando exige apagar o login dele no Firebase Auth, algo que só
+  // dá pra fazer com privilégio de administrador — por isso passa por uma função no servidor
+  // (api/excluir-catequizando.js), em vez de escrever direto no Firestore como o resto da turma.
+  const excluirContaCatequizando = async (aluno) => {
+    setErroExclusaoConta("");
+    const ok = window.confirm(
+      `Excluir a conta de "${aluno.nome}"?\n\nIsso apaga PERMANENTEMENTE o cadastro dela(e) no app, incluindo o que preencheu em "Minha Caminhada". Essa ação não pode ser desfeita.`
+    );
+    if (!ok) return;
+    setExcluindoContaId(aluno.id);
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const resp = await fetch("/api/excluir-catequizando", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken, alunoId: aluno.id }),
+      });
+      const resultado = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setErroExclusaoConta(resultado.error || "Não foi possível excluir a conta.");
+        return;
+      }
+      onCatequizandoExcluido?.(aluno.id);
+    } catch {
+      setErroExclusaoConta("Não foi possível excluir a conta. Verifique sua internet e tente de novo.");
+    } finally {
+      setExcluindoContaId(null);
+    }
   };
 
   const cal = data.calendarioAulas || calendarioAulasVazio();
@@ -2243,6 +2285,18 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
                               <button style={styles.iconButton} onClick={() => desvincular(a.vinculoManualId)} title="Desvincular"><X size={13} /></button>
                             </div>
                           )}
+                          {!a.manual && (
+                            <div style={styles.rowActions}>
+                              <button
+                                style={styles.iconButton}
+                                onClick={() => excluirContaCatequizando(a)}
+                                disabled={excluindoContaId === a.id}
+                                title="Excluir conta"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                       {vinculandoId === a.id && (
@@ -2265,6 +2319,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
                 })}
               </div>
             )}
+            {erroExclusaoConta && <p style={styles.loginErro}>{erroExclusaoConta}</p>}
             <button style={{ ...styles.addButton, marginTop: 12 }} onClick={iniciarNovoManual}>
               <Plus size={14} /> Adicionar catequizando manualmente
             </button>
