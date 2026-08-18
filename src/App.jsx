@@ -124,7 +124,10 @@ function resumoSacramento(c, prefixo, titulo) {
     const data = c[`${prefixo}Data`];
     const local = c[`${prefixo}Local`];
     const dataTxt = desconhecida ? "data não lembrada" : (data ? formatDate(data) : "data não informada");
-    return { titulo, feito: true, detalhe: `${dataTxt}${local ? ` — ${local}` : ""}` };
+    const campoExtra = SACRAMENTOS_CONFIG.find((s) => s.prefixo === prefixo)?.campoExtra;
+    const extraValor = campoExtra ? c[campoExtra.key] : "";
+    const extraTxt = extraValor ? ` · ${campoExtra.label}: ${extraValor}` : "";
+    return { titulo, feito: true, detalhe: `${dataTxt}${local ? ` — ${local}` : ""}${extraTxt}` };
   }
   if (status === "nao") return { titulo, feito: false, detalhe: "não recebeu" };
   return { titulo, feito: null, detalhe: "não informado" };
