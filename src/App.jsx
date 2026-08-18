@@ -33,11 +33,14 @@ const dadosVazios = () => ({ encontros: [], materiais: [], avisos: [], posts: []
 
 // Copia o cronograma (encontros) e os materiais de uma turma existente pra servir de ponto de
 // partida de uma turma nova — cada encontro copiado fica sem data (a catequista define a data de
-// cada um na turma nova) e sem presenças; cada material some os comentários da turma antiga e tem
-// seus anexos duplicados no Storage num caminho próprio, pra apagar um anexo na turma nova não
-// apagar o arquivo que a turma antiga ainda está usando.
+// cada um na turma nova) e sem presenças; cada material some os comentários da turma antiga. Os
+// anexos continuam apontando pro mesmo arquivo no Storage (o navegador não consegue baixar o
+// arquivo original pra duplicá-lo por causa da política de CORS do Storage), então tanto a cópia
+// quanto o anexo original ficam marcados como "compartilhado", pra remover o anexo em uma das
+// turmas só tirar a referência ali, sem apagar o arquivo que a outra turma ainda está usando.
 async function replicarConteudo(origemTurmaId) {
-  const origemSnap = await getDoc(doc(db, "turmaData", origemTurmaId));
+  const origemRef = doc(db, "turmaData", origemTurmaId);
+  const origemSnap = await getDoc(origemRef);
   if (!origemSnap.exists()) return null;
   const origem = origemSnap.data();
 
@@ -48,35 +51,27 @@ async function replicarConteudo(origemTurmaId) {
     return { id: novoId, numero: e.numero, tema: e.tema, local: e.local || "", observacoes: e.observacoes || "", data: "" };
   });
 
-  const novosMateriais = [];
-  for (let i = 0; i < (origem.materiais || []).length; i++) {
-    const m = origem.materiais[i];
-    const novoId = `m${Date.now()}-${i}`;
-    const novosAnexos = [];
-    for (const a of m.anexos || []) {
-      try {
-        const blob = await (await fetch(a.url)).blob();
-        const caminho = `materiais/${novoId}/${Date.now()}-${a.nome}`;
-        const ref = storageRef(storage, caminho);
-        await uploadBytes(ref, blob);
-        const url = await getDownloadURL(ref);
-        novosAnexos.push({ ...a, id: `x${Date.now()}${i}`, url, caminho });
-      } catch {
-        // se a cópia de um anexo falhar, o material segue sem ele em vez de travar a réplica inteira
-      }
-    }
-    novosMateriais.push({
-      id: novoId,
-      encontroId: mapaEncontros[m.encontroId] || "",
-      titulo: m.titulo || "",
-      leitura: m.leitura || "",
-      conteudo: m.conteudo || "",
-      paraProximoEncontro: m.paraProximoEncontro || "",
-      videoUrl: m.videoUrl || "",
-      anexos: novosAnexos,
-      comentarios: [],
-    });
+  let precisaAtualizarOrigem = false;
+  const materiaisOrigemAtualizados = (origem.materiais || []).map((m) => {
+    if (!(m.anexos || []).some((a) => !a.compartilhado)) return m;
+    precisaAtualizarOrigem = true;
+    return { ...m, anexos: m.anexos.map((a) => ({ ...a, compartilhado: true })) };
+  });
+  if (precisaAtualizarOrigem) {
+    await setDoc(origemRef, { ...origem, materiais: materiaisOrigemAtualizados });
   }
+
+  const novosMateriais = (origem.materiais || []).map((m, i) => ({
+    id: `m${Date.now()}-${i}`,
+    encontroId: mapaEncontros[m.encontroId] || "",
+    titulo: m.titulo || "",
+    leitura: m.leitura || "",
+    conteudo: m.conteudo || "",
+    paraProximoEncontro: m.paraProximoEncontro || "",
+    videoUrl: m.videoUrl || "",
+    anexos: (m.anexos || []).map((a, j) => ({ ...a, id: `x${Date.now()}${i}${j}`, compartilhado: true })),
+    comentarios: [],
+  }));
 
   return { encontros: novosEncontros, materiais: novosMateriais };
 }
@@ -2790,7 +2785,9 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
 
   const removerAnexo = (anexo) => {
     setForm({ ...form, anexos: anexos.filter((a) => a.id !== anexo.id) });
-    if (anexo.caminho) {
+    // Anexo "compartilhado" veio de uma réplica de turma e outra turma pode estar usando o mesmo
+    // arquivo — só tira a referência aqui, sem apagar o arquivo em si do Storage.
+    if (anexo.caminho && !anexo.compartilhado) {
       deleteObject(storageRef(storage, anexo.caminho)).catch(() => {});
     }
   };
