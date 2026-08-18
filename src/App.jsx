@@ -133,10 +133,13 @@ function todayISO() {
   return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 }
 
-function todayDateWeekdayLabel() {
-  const data = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+function todayDateLabel() {
+  return new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+function todayWeekdayLabel() {
   const diaSemana = new Date().toLocaleDateString("pt-BR", { weekday: "long" });
-  return `${data}, ${diaSemana}`;
+  return diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1);
 }
 
 // --- Cálculo litúrgico (datas móveis via algoritmo de Meeus/Jones/Butcher, de domínio público) ---
@@ -1265,8 +1268,9 @@ function Liturgia({ role }) {
     <div style={styles.stack}>
       <div>
         <h2 style={styles.sectionTitle}>Liturgia do dia</h2>
-        <p style={{ ...styles.cardBody, marginTop: 4 }}>
-          {todayDateWeekdayLabel()}{semanaResumo && ` da ${semanaResumo}`}
+        <p style={{ ...styles.cardBody, marginTop: 4 }}>{todayDateLabel()}</p>
+        <p style={{ ...styles.cardBody, margin: 0 }}>
+          {todayWeekdayLabel()}{semanaResumo && ` da ${semanaResumo}`}
         </p>
       </div>
 
