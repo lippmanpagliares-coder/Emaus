@@ -11,7 +11,7 @@ import {
   reauthenticateWithCredential, updatePassword, updateEmail,
 } from "firebase/auth";
 import {
-  collection, doc, getDoc, getDocs, setDoc, onSnapshot,
+  collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot,
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import * as XLSX from "xlsx";
@@ -680,6 +680,14 @@ export default function App() {
     await persistTurmas(next);
   };
 
+  const excluirTurma = async (turmaId) => {
+    await deleteDoc(doc(db, "turmaData", turmaId));
+    await deleteDoc(doc(db, "turmas", turmaId));
+    const restantes = (turmas || []).filter((t) => t.id !== turmaId);
+    setTurmas(restantes);
+    if (turmaAtualId === turmaId) setTurmaAtualId(restantes[0]?.id || null);
+  };
+
   // Marca Avisos/Comunidade como visitados (para o contador de novidades) quando a pessoa entra na aba.
   useEffect(() => {
     if (!session || !users) return;
@@ -766,6 +774,7 @@ export default function App() {
         setTurmaAtualId={setTurmaAtualId}
         criarTurma={criarTurma}
         renomearTurma={renomearTurma}
+        excluirTurma={excluirTurma}
         onAbrirPerfil={() => setMostrarPerfil(true)}
       />
       <main style={styles.main}>
@@ -1036,7 +1045,7 @@ function LoginScreen() {
   );
 }
 
-function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewRole, role, turmas, turmaAtualId, setTurmaAtualId, criarTurma, renomearTurma, onAbrirPerfil }) {
+function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewRole, role, turmas, turmaAtualId, setTurmaAtualId, criarTurma, renomearTurma, excluirTurma, onAbrirPerfil }) {
   const [criando, setCriando] = useState(false);
   const [nomeNovaTurma, setNomeNovaTurma] = useState("");
   const [codigoNovaTurma, setCodigoNovaTurma] = useState("");
@@ -1070,6 +1079,23 @@ function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewR
     if (!nomeEdicao.trim()) return;
     await renomearTurma(turmaAtualId, nomeEdicao);
     setEditando(false);
+  };
+
+  const [excluindo, setExcluindo] = useState(false);
+  const podeExcluir = (turmas || []).length > 1;
+
+  const confirmarExclusao = async () => {
+    if (!turmaAtual) return;
+    const ok = window.confirm(
+      `Excluir a turma "${turmaAtual.nome}"?\n\nIsso apaga PERMANENTEMENTE o cronograma, os materiais, os avisos, a comunidade e o histórico de presenças dessa turma. Quem já tem conta cadastrada nela vai precisar entrar em outra turma pra continuar usando o app.\n\nEssa ação não pode ser desfeita.`
+    );
+    if (!ok) return;
+    setExcluindo(true);
+    try {
+      await excluirTurma(turmaAtual.id);
+    } finally {
+      setExcluindo(false);
+    }
   };
 
   return (
@@ -1110,6 +1136,11 @@ function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewR
                 {turmas.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
               </select>
               <button style={styles.turmaAddButton} onClick={iniciarEdicao}><Pencil size={13} /></button>
+              {podeExcluir && (
+                <button style={styles.turmaAddButton} onClick={confirmarExclusao} disabled={excluindo} title="Excluir turma">
+                  <Trash2 size={13} />
+                </button>
+              )}
               <button style={styles.turmaAddButton} onClick={() => setCriando(true)}><Plus size={13} /> Nova turma</button>
             </>
           ) : (
