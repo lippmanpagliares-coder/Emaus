@@ -98,12 +98,22 @@ const MESES_NOME = [
 ];
 
 const caminhadaVazia = () => ({
+  whatsapp: "",
   nascimentoDia: "", nascimentoMes: "", nascimentoAno: "", nascimentoLocal: "", aniversarioPublico: false,
   batismoStatus: "", batismoData: "", batismoDataDesconhecida: false, batismoLocal: "", padrinhos: "",
   eucaristiaStatus: "", eucaristiaData: "", eucaristiaDataDesconhecida: false, eucaristiaLocal: "",
   crismaStatus: "", crismaData: "", crismaDataDesconhecida: false, crismaLocal: "", padrinhosCrisma: "",
   matrimonioStatus: "", matrimonioData: "", matrimonioDataDesconhecida: false, matrimonioLocal: "", conjuge: "",
 });
+
+// Monta um link direto do WhatsApp a partir do número digitado — assume DDI 55 (Brasil)
+// quando a pessoa não digita o código do país junto.
+function linkWhatsapp(numero) {
+  const digitos = (numero || "").replace(/\D/g, "");
+  if (!digitos) return null;
+  const comPais = digitos.length <= 11 ? `55${digitos}` : digitos;
+  return `https://wa.me/${comPais}`;
+}
 
 // Cada sacramento vira um cartão "sim/não" no formulário — se "sim", pede data (com opção de
 // "não lembro"), local e um campo extra (padrinhos/cônjuge). Fica registrado que a pessoa TEM o
@@ -1496,6 +1506,25 @@ function Liturgia({ role }) {
   );
 }
 
+function ContatoFields({ form, setForm }) {
+  return (
+    <div style={styles.card}>
+      <p style={styles.cardEyebrow}>CONTATO (OPCIONAL)</p>
+      <div style={styles.formRow}>
+        <label style={styles.label}>WhatsApp</label>
+        <input
+          type="tel"
+          style={styles.input}
+          value={form.whatsapp || ""}
+          onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+          placeholder="(11) 91234-5678"
+        />
+      </div>
+      <p style={styles.leitura}>Fica visível só para a catequista, caso ela precise falar com você.</p>
+    </div>
+  );
+}
+
 function NascimentoFields({ form, setForm, titulo, consentimentoLabel }) {
   return (
     <div style={styles.card}>
@@ -1733,14 +1762,14 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
     };
 
     const exportarRelatorioCaminhada = () => {
-      const cabecalho = ["Catecúmeno", "Nascimento", ...SACRAMENTOS_CONFIG.map((s) => s.titulo)];
+      const cabecalho = ["Catecúmeno", "WhatsApp", "Nascimento", ...SACRAMENTOS_CONFIG.map((s) => s.titulo)];
       const linhas = alunosTodos.map((a) => {
         const c = a.caminhada || caminhadaVazia();
         const nascimento = c.nascimentoDia && c.nascimentoMes
           ? `${c.nascimentoDia} de ${MESES_NOME[Number(c.nascimentoMes) - 1]}${c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}`
           : "";
         const colunasSacramentos = SACRAMENTOS_CONFIG.map((s) => resumoSacramento(c, s.prefixo, s.titulo).detalhe);
-        return [a.nome, nascimento, ...colunasSacramentos];
+        return [a.nome, c.whatsapp || "", nascimento, ...colunasSacramentos];
       });
       const planilha = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
       const livro = XLSX.utils.book_new();
@@ -1764,6 +1793,8 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
               <input style={styles.input} value={formManual.nome} onChange={(e) => setFormManual({ ...formManual, nome: e.target.value })} autoFocus />
             </div>
           </div>
+
+          <ContatoFields form={formManual.caminhada} setForm={(next) => setFormManual({ ...formManual, caminhada: next })} />
 
           <NascimentoFields
             form={formManual.caminhada}
@@ -1896,11 +1927,17 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
                   const nascimento = c.nascimentoDia && c.nascimentoMes
                     ? `${c.nascimentoDia} de ${MESES_NOME[Number(c.nascimentoMes) - 1]}${c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}`
                     : "Data de nascimento não informada";
+                  const whatsapp = linkWhatsapp(c.whatsapp);
                   return (
                     <div key={a.id} style={styles.timelineHead}>
                       <span style={styles.cardBody}>
                         {a.nome}
                         {a.manual && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, marginLeft: 6 }}>(cadastro manual)</span>}
+                        {whatsapp && (
+                          <a href={whatsapp} target="_blank" rel="noopener noreferrer" style={{ fontSize: FS.sm, color: GOLD, marginLeft: 8 }}>
+                            <MessageCircle size={12} style={{ marginRight: 3, verticalAlign: "middle" }} />{c.whatsapp}
+                          </a>
+                        )}
                       </span>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: FS.sm, color: TEXT_MUTED }}>{nascimento}</span>
@@ -2106,6 +2143,8 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
           <button style={styles.linkButton} onClick={() => setVerLembranca(true)}>Ver minha lembrança →</button>
         </section>
       )}
+
+      <ContatoFields form={form} setForm={setForm} />
 
       <NascimentoFields
         form={form}
