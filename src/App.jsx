@@ -14,6 +14,7 @@ import {
   collection, doc, getDoc, getDocs, setDoc, onSnapshot,
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import * as XLSX from "xlsx";
 
 const CODIGO_CATEQUISTA = "EMAUS2026";
 const EXIGIR_LOGIN = true;
@@ -98,10 +99,36 @@ const MESES_NOME = [
 
 const caminhadaVazia = () => ({
   nascimentoDia: "", nascimentoMes: "", nascimentoAno: "", nascimentoLocal: "", aniversarioPublico: false,
-  batismoData: "", batismoLocal: "", padrinhos: "",
-  eucaristiaData: "", eucaristiaLocal: "",
-  crismaData: "", crismaLocal: "", padrinhosCrisma: "",
+  batismoStatus: "", batismoData: "", batismoDataDesconhecida: false, batismoLocal: "", padrinhos: "",
+  eucaristiaStatus: "", eucaristiaData: "", eucaristiaDataDesconhecida: false, eucaristiaLocal: "",
+  crismaStatus: "", crismaData: "", crismaDataDesconhecida: false, crismaLocal: "", padrinhosCrisma: "",
+  matrimonioStatus: "", matrimonioData: "", matrimonioDataDesconhecida: false, matrimonioLocal: "", conjuge: "",
 });
+
+// Cada sacramento vira um cartão "sim/não" no formulário — se "sim", pede data (com opção de
+// "não lembro"), local e um campo extra (padrinhos/cônjuge). Fica registrado que a pessoa TEM o
+// sacramento mesmo quando ela não lembra os detalhes, em vez de ficar tudo em branco/ambíguo.
+const SACRAMENTOS_CONFIG = [
+  { prefixo: "batismo", titulo: "Batismo", icon: Droplet, campoExtra: { key: "padrinhos", label: "Padrinhos" } },
+  { prefixo: "eucaristia", titulo: "Primeira Eucaristia", icon: UtensilsCrossed, campoExtra: null },
+  { prefixo: "crisma", titulo: "Crisma", icon: Sparkles, campoExtra: { key: "padrinhosCrisma", label: "Padrinhos" } },
+  { prefixo: "matrimonio", titulo: "Matrimônio", icon: Heart, campoExtra: { key: "conjuge", label: "Cônjuge" } },
+];
+
+// Resume o estado de um sacramento pra exibição: feito=true (sim, com detalhe), feito=false
+// (respondeu que não recebeu) ou feito=null (ainda não respondeu nada).
+function resumoSacramento(c, prefixo, titulo) {
+  const status = c[`${prefixo}Status`];
+  if (status === "sim") {
+    const desconhecida = c[`${prefixo}DataDesconhecida`];
+    const data = c[`${prefixo}Data`];
+    const local = c[`${prefixo}Local`];
+    const dataTxt = desconhecida ? "data não lembrada" : (data ? formatDate(data) : "data não informada");
+    return { titulo, feito: true, detalhe: `${dataTxt}${local ? ` — ${local}` : ""}` };
+  }
+  if (status === "nao") return { titulo, feito: false, detalhe: "não recebeu" };
+  return { titulo, feito: null, detalhe: "não informado" };
+}
 
 const DIAS_SEMANA_NOME = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 
@@ -1466,6 +1493,116 @@ function Liturgia({ role }) {
   );
 }
 
+function NascimentoFields({ form, setForm, titulo, consentimentoLabel }) {
+  return (
+    <div style={styles.card}>
+      <p style={styles.cardEyebrow}>{titulo}</p>
+      <div style={styles.formRow}>
+        <label style={styles.label}>Dia</label>
+        <select style={styles.input} value={form.nascimentoDia} onChange={(e) => setForm({ ...form, nascimentoDia: e.target.value })}>
+          <option value="">—</option>
+          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+            <option key={d} value={d}>{d}</option>
+          ))}
+        </select>
+      </div>
+      <div style={styles.formRow}>
+        <label style={styles.label}>Mês</label>
+        <select style={styles.input} value={form.nascimentoMes} onChange={(e) => setForm({ ...form, nascimentoMes: e.target.value })}>
+          <option value="">—</option>
+          {MESES_NOME.map((m, i) => (
+            <option key={m} value={i + 1}>{m}</option>
+          ))}
+        </select>
+      </div>
+      <div style={styles.formRow}>
+        <label style={styles.label}>Ano (opcional — deixe em branco se preferir não informar)</label>
+        <input
+          type="number"
+          style={styles.input}
+          value={form.nascimentoAno}
+          onChange={(e) => setForm({ ...form, nascimentoAno: e.target.value })}
+          placeholder="Ex: 1990"
+        />
+      </div>
+      <div style={styles.formRow}>
+        <label style={styles.label}>Local de nascimento</label>
+        <input
+          style={styles.input}
+          value={form.nascimentoLocal}
+          onChange={(e) => setForm({ ...form, nascimentoLocal: e.target.value })}
+          placeholder="Cidade/estado"
+        />
+      </div>
+      {consentimentoLabel && (
+        <label style={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={!!form.aniversarioPublico}
+            onChange={(e) => setForm({ ...form, aniversarioPublico: e.target.checked })}
+          />
+          {consentimentoLabel}
+        </label>
+      )}
+    </div>
+  );
+}
+
+function SacramentoCard({ icon: Icon, titulo, prefixo, form, setForm }) {
+  const config = SACRAMENTOS_CONFIG.find((s) => s.prefixo === prefixo);
+  const statusKey = `${prefixo}Status`;
+  const dataKey = `${prefixo}Data`;
+  const descKey = `${prefixo}DataDesconhecida`;
+  const localKey = `${prefixo}Local`;
+  const status = form[statusKey];
+
+  return (
+    <div style={styles.card}>
+      <p style={styles.cardEyebrow}><Icon size={13} style={{ marginRight: 4 }} />{titulo.toUpperCase()}</p>
+      <label style={styles.label}>Recebeu esse sacramento?</label>
+      <div style={styles.roleToggle}>
+        <button type="button" style={{ ...styles.rolePill, ...(status === "sim" ? styles.rolePillActive : {}) }} onClick={() => setForm({ ...form, [statusKey]: "sim" })}>Sim</button>
+        <button type="button" style={{ ...styles.rolePill, ...(status === "nao" ? styles.rolePillActive : {}) }} onClick={() => setForm({ ...form, [statusKey]: "nao", [dataKey]: "", [descKey]: false, [localKey]: "" })}>Não</button>
+      </div>
+      {status === "sim" && (
+        <>
+          <div style={styles.formRow}>
+            <label style={styles.label}>Data</label>
+            <input
+              type="date"
+              style={styles.input}
+              value={form[dataKey]}
+              disabled={!!form[descKey]}
+              onChange={(e) => setForm({ ...form, [dataKey]: e.target.value })}
+            />
+          </div>
+          <label style={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={!!form[descKey]}
+              onChange={(e) => setForm({ ...form, [descKey]: e.target.checked, [dataKey]: e.target.checked ? "" : form[dataKey] })}
+            />
+            Não lembro a data exata
+          </label>
+          <div style={styles.formRow}>
+            <label style={styles.label}>Local (paróquia/cidade)</label>
+            <input style={styles.input} value={form[localKey]} onChange={(e) => setForm({ ...form, [localKey]: e.target.value })} />
+          </div>
+          {config.campoExtra && (
+            <div style={styles.formRow}>
+              <label style={styles.label}>{config.campoExtra.label}</label>
+              <input
+                style={styles.input}
+                value={form[config.campoExtra.key]}
+                onChange={(e) => setForm({ ...form, [config.campoExtra.key]: e.target.value })}
+              />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, turmas }) {
   const me = users.find((u) => u.id === session.id);
@@ -1473,11 +1610,36 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   const [saved, setSaved] = useState(false);
   const [verLembranca, setVerLembranca] = useState(false);
   const [encontroPresencaId, setEncontroPresencaId] = useState(null);
-  const [verRelatorio, setVerRelatorio] = useState(null);
   const [verCalendario, setVerCalendario] = useState(false);
   const [nomeFerias, setNomeFerias] = useState("");
   const [inicioFerias, setInicioFerias] = useState("");
   const [fimFerias, setFimFerias] = useState("");
+  const [editandoManualId, setEditandoManualId] = useState(null);
+  const [formManual, setFormManual] = useState(null);
+
+  const catecumenosManuais = data.catecumenosManuais || [];
+
+  const iniciarNovoManual = () => {
+    setFormManual({ id: `manual-${Date.now()}`, nome: "", caminhada: caminhadaVazia() });
+    setEditandoManualId("new");
+  };
+  const iniciarEditarManual = (m) => {
+    setFormManual({ ...m, caminhada: { ...caminhadaVazia(), ...m.caminhada } });
+    setEditandoManualId(m.id);
+  };
+  const cancelarManual = () => { setEditandoManualId(null); setFormManual(null); };
+  const salvarManual = () => {
+    if (!formManual.nome.trim()) return;
+    const existe = catecumenosManuais.some((m) => m.id === formManual.id);
+    const next = existe
+      ? catecumenosManuais.map((m) => (m.id === formManual.id ? formManual : m))
+      : [...catecumenosManuais, formManual];
+    persist({ ...data, catecumenosManuais: next });
+    cancelarManual();
+  };
+  const removerManual = (id) => {
+    persist({ ...data, catecumenosManuais: catecumenosManuais.filter((m) => m.id !== id) });
+  };
 
   const cal = data.calendarioAulas || calendarioAulasVazio();
   const diasAula = gerarDiasAula(cal.inicio, cal.fim, cal.diaSemana);
@@ -1529,6 +1691,9 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   if (session.papel === "catequista") {
     const turmaAtual = (turmas || []).find((t) => t.id === turmaAtualId);
     const alunos = users.filter((u) => u.papel === "aluno" && u.turmaId === turmaAtualId);
+    // Junta as contas reais com os catecúmenos cadastrados manualmente (quem não quer/consegue
+    // criar conta no app) — a partir daqui os dois aparecem juntos em toda a turma.
+    const alunosTodos = [...alunos, ...catecumenosManuais.map((m) => ({ ...m, manual: true }))];
     const encontrosOrdenados = [...data.encontros].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999"));
     const encontroAtual = encontrosOrdenados.find((e) => e.data === today)
       || [...encontrosOrdenados].reverse().find((e) => e.data && e.data <= today)
@@ -1543,6 +1708,84 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       );
       persist({ ...data, encontros: nextEncontros });
     };
+
+    const nomeArquivo = (base) => `${base}-${(turmaAtual?.nome || "turma").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "-")}.xlsx`;
+
+    const exportarRelatorioPresencas = () => {
+      const cabecalho = ["Catecúmeno", ...encontrosOrdenados.map((e) => `${formatDate(e.data)} — ${e.tema}`)];
+      const linhas = alunosTodos.map((a) => [
+        a.nome,
+        ...encontrosOrdenados.map((e) => {
+          const p = e.presencas?.[a.id];
+          return p === true ? "Presente" : p === false ? "Ausente" : "—";
+        }),
+      ]);
+      const planilha = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+      const livro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(livro, planilha, "Presenças");
+      XLSX.writeFile(livro, nomeArquivo("presencas"));
+    };
+
+    const exportarRelatorioCaminhada = () => {
+      const cabecalho = ["Catecúmeno", "Nascimento", ...SACRAMENTOS_CONFIG.map((s) => s.titulo)];
+      const linhas = alunosTodos.map((a) => {
+        const c = a.caminhada || caminhadaVazia();
+        const nascimento = c.nascimentoDia && c.nascimentoMes
+          ? `${c.nascimentoDia} de ${MESES_NOME[Number(c.nascimentoMes) - 1]}${c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}`
+          : "";
+        const colunasSacramentos = SACRAMENTOS_CONFIG.map((s) => {
+          const r = resumoSacramento(c, s.prefixo, s.titulo);
+          if (r.feito === true) return r.detalhe;
+          if (r.feito === false) return "Não recebeu";
+          return "Não informado";
+        });
+        return [a.nome, nascimento, ...colunasSacramentos];
+      });
+      const planilha = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+      const livro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(livro, planilha, "Caminhada");
+      XLSX.writeFile(livro, nomeArquivo("caminhada"));
+    };
+
+    if (editandoManualId) {
+      return (
+        <div style={styles.stack}>
+          <button style={styles.linkButton} onClick={cancelarManual}>← Voltar</button>
+          <h2 style={styles.sectionTitle}>{editandoManualId === "new" ? "Novo catecúmeno" : "Editar catecúmeno"}</h2>
+          <p style={styles.leitura}>
+            Use isso para quem não quer ou não consegue criar conta no app — o cadastro fica só aqui,
+            visível pra você. Todos os campos abaixo, além do nome, são opcionais.
+          </p>
+
+          <div style={styles.card}>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Nome completo</label>
+              <input style={styles.input} value={formManual.nome} onChange={(e) => setFormManual({ ...formManual, nome: e.target.value })} autoFocus />
+            </div>
+          </div>
+
+          <NascimentoFields
+            form={formManual.caminhada}
+            setForm={(next) => setFormManual({ ...formManual, caminhada: next })}
+            titulo="NASCIMENTO (OPCIONAL)"
+            consentimentoLabel="Anunciar o aniversário dele(a) na Comunidade da turma"
+          />
+
+          {SACRAMENTOS_CONFIG.map((s) => (
+            <SacramentoCard
+              key={s.prefixo}
+              icon={s.icon}
+              titulo={s.titulo}
+              prefixo={s.prefixo}
+              form={formManual.caminhada}
+              setForm={(next) => setFormManual({ ...formManual, caminhada: next })}
+            />
+          ))}
+
+          <button style={styles.saveButton} onClick={salvarManual}>Salvar catecúmeno</button>
+        </div>
+      );
+    }
 
     if (verCalendario) {
       return (
@@ -1637,79 +1880,6 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       );
     }
 
-    if (verRelatorio === "presenca") {
-      return (
-        <div style={styles.stack}>
-          <button style={styles.linkButton} onClick={() => setVerRelatorio(null)}>← Voltar</button>
-          <div className="imprimir-area">
-            <h2 style={styles.sectionTitle}>Relatório de presenças — {turmaAtual?.nome}</h2>
-            <div style={{ overflowX: "auto", marginTop: 12 }}>
-              <table style={styles.tabelaRelatorio}>
-                <thead>
-                  <tr>
-                    <th style={styles.tabelaTh}>Catecúmeno</th>
-                    {encontrosOrdenados.map((e) => (
-                      <th key={e.id} style={styles.tabelaTh}>{formatDate(e.data)}<br />{e.tema}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {alunos.map((a) => (
-                    <tr key={a.id}>
-                      <td style={styles.tabelaTd}>{a.nome}</td>
-                      {encontrosOrdenados.map((e) => {
-                        const p = e.presencas?.[a.id];
-                        return (
-                          <td key={e.id} style={{ ...styles.tabelaTd, textAlign: "center", color: p === true ? "#2E7D32" : p === false ? "#B3261E" : TEXT_MUTED }}>
-                            {p === true ? "Presente" : p === false ? "Ausente" : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                  {alunos.length === 0 && (
-                    <tr><td style={styles.tabelaTd} colSpan={encontrosOrdenados.length + 1}>Nenhum aluno cadastrado ainda.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <button style={styles.saveButton} onClick={() => window.print()}>Imprimir / Salvar como PDF</button>
-        </div>
-      );
-    }
-
-    if (verRelatorio === "caminhada") {
-      return (
-        <div style={styles.stack}>
-          <button style={styles.linkButton} onClick={() => setVerRelatorio(null)}>← Voltar</button>
-          <div className="imprimir-area" style={styles.stack}>
-            <h2 style={styles.sectionTitle}>Relatório da caminhada — {turmaAtual?.nome}</h2>
-            {alunos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
-            {alunos.map((a) => {
-              const c = a.caminhada || caminhadaVazia();
-              const sacramentos = [
-                { nome: "Batismo", feito: !!c.batismoData, detalhe: c.batismoData ? `${formatDate(c.batismoData)}${c.batismoLocal ? ` — ${c.batismoLocal}` : ""}` : null },
-                { nome: "Primeira Eucaristia", feito: !!c.eucaristiaData, detalhe: c.eucaristiaData ? `${formatDate(c.eucaristiaData)}${c.eucaristiaLocal ? ` — ${c.eucaristiaLocal}` : ""}` : null },
-                { nome: "Crisma", feito: !!c.crismaData, detalhe: c.crismaData ? `${formatDate(c.crismaData)}${c.crismaLocal ? ` — ${c.crismaLocal}` : ""}` : null },
-              ];
-              return (
-                <section key={a.id} style={styles.card}>
-                  <h3 style={styles.cardTitle}>{a.nome}</h3>
-                  {sacramentos.map((s) => (
-                    <p key={s.nome} style={{ ...styles.cardBody, color: s.feito ? "#2E7D32" : "#B3261E", fontWeight: 600 }}>
-                      {s.feito ? "✓" : "✗"} {s.nome}{s.feito ? ` — ${s.detalhe}` : " — falta registrar"}
-                    </p>
-                  ))}
-                </section>
-              );
-            })}
-          </div>
-          <button style={styles.saveButton} onClick={() => window.print()}>Imprimir / Salvar como PDF</button>
-        </div>
-      );
-    }
-
     return (
       <div style={styles.stack}>
         <h2 style={styles.sectionTitle}>Caminhada da turma</h2>
@@ -1725,24 +1895,39 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
 
         <div style={styles.card}>
           <p style={styles.cardEyebrow}>CATECÚMENOS DA TURMA</p>
-          {alunos.length === 0 ? (
+          {alunosTodos.length === 0 ? (
             <p style={styles.emptyState}>Nenhum catecúmeno cadastrado ainda.</p>
           ) : (
             <div style={styles.stack}>
-              {[...alunos].sort((a, b) => a.nome.localeCompare(b.nome)).map((a) => {
+              {[...alunosTodos].sort((a, b) => a.nome.localeCompare(b.nome)).map((a) => {
                 const c = a.caminhada || {};
                 const nascimento = c.nascimentoDia && c.nascimentoMes
                   ? `${c.nascimentoDia} de ${MESES_NOME[Number(c.nascimentoMes) - 1]}${c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}`
                   : "Data de nascimento não informada";
                 return (
                   <div key={a.id} style={styles.timelineHead}>
-                    <span style={styles.cardBody}>{a.nome}</span>
-                    <span style={{ fontSize: FS.sm, color: TEXT_MUTED }}>{nascimento}</span>
+                    <span style={styles.cardBody}>
+                      {a.nome}
+                      {a.manual && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, marginLeft: 6 }}>(cadastro manual)</span>}
+                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: FS.sm, color: TEXT_MUTED }}>{nascimento}</span>
+                      {a.manual && (
+                        <div style={styles.rowActions}>
+                          <button style={styles.iconButton} onClick={() => iniciarEditarManual(a)}><Pencil size={13} /></button>
+                          <button style={styles.iconButton} onClick={() => removerManual(a.id)}><Trash2 size={13} /></button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
+          <button style={{ ...styles.addButton, marginTop: 12 }} onClick={iniciarNovoManual}>
+            <Plus size={14} /> Adicionar catecúmeno manualmente
+          </button>
+          <p style={styles.leitura}>Use para quem não quer ou não consegue criar conta no app — o cadastro fica só aqui, visível pra você.</p>
         </div>
 
         <div style={styles.card}>
@@ -1757,9 +1942,10 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
 
         <div style={styles.card}>
           <p style={styles.cardEyebrow}>RELATÓRIOS</p>
+          <p style={styles.leitura}>Baixa uma planilha Excel (.xlsx) com os dados, pronta pra abrir.</p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button style={styles.addButton} onClick={() => setVerRelatorio("presenca")}><FileDown size={14} /> Presenças</button>
-            <button style={styles.addButton} onClick={() => setVerRelatorio("caminhada")}><FileDown size={14} /> Caminhada / sacramentos</button>
+            <button style={styles.addButton} onClick={exportarRelatorioPresencas}><FileDown size={14} /> Presenças</button>
+            <button style={styles.addButton} onClick={exportarRelatorioCaminhada}><FileDown size={14} /> Caminhada / sacramentos</button>
           </div>
         </div>
 
@@ -1781,8 +1967,8 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
                   ))}
                 </select>
               </div>
-              {alunos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
-              {alunos.map((a) => {
+              {alunosTodos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
+              {alunosTodos.map((a) => {
                 const presente = encontroPresenca?.presencas?.[a.id];
                 return (
                   <div key={a.id} style={styles.timelineHead}>
@@ -1808,14 +1994,20 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
           )}
         </div>
 
-        {alunos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
-        {alunos.map((a) => {
+        {alunosTodos.length === 0 && <p style={styles.emptyState}>Nenhum aluno cadastrado ainda.</p>}
+        {alunosTodos.map((a) => {
           const c = a.caminhada || caminhadaVazia();
-          const preenchido = c.nascimentoDia || c.batismoData || c.eucaristiaData || c.crismaData;
+          const preenchido = c.nascimentoDia || SACRAMENTOS_CONFIG.some((s) => c[`${s.prefixo}Status`]);
           return (
             <div key={a.id} style={styles.card}>
               <div style={styles.timelineHead}>
                 <h3 style={styles.cardTitle}>{a.nome}</h3>
+                {a.manual && (
+                  <div style={styles.rowActions}>
+                    <button style={styles.iconButton} onClick={() => iniciarEditarManual(a)}><Pencil size={13} /></button>
+                    <button style={styles.iconButton} onClick={() => removerManual(a.id)}><Trash2 size={13} /></button>
+                  </div>
+                )}
               </div>
               {!preenchido && <p style={styles.emptyState}>Ainda não preencheu a caminhada.</p>}
               {c.nascimentoDia && c.nascimentoMes && (
@@ -1823,21 +2015,17 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
                   Nascimento: {c.nascimentoDia} de {MESES_NOME[Number(c.nascimentoMes) - 1]}{c.nascimentoAno ? ` de ${c.nascimentoAno}` : ""}{c.nascimentoLocal ? ` — ${c.nascimentoLocal}` : ""}
                 </p>
               )}
-              {c.batismoData && (
-                <p style={styles.cardBody}><Droplet size={13} style={{ marginRight: 4 }} />
-                  Batismo: {formatDate(c.batismoData)}{c.batismoLocal ? ` — ${c.batismoLocal}` : ""}{c.padrinhos ? ` · Padrinhos: ${c.padrinhos}` : ""}
-                </p>
-              )}
-              {c.eucaristiaData && (
-                <p style={styles.cardBody}><UtensilsCrossed size={13} style={{ marginRight: 4 }} />
-                  Primeira Eucaristia: {formatDate(c.eucaristiaData)}{c.eucaristiaLocal ? ` — ${c.eucaristiaLocal}` : ""}
-                </p>
-              )}
-              {c.crismaData && (
-                <p style={styles.cardBody}><Sparkles size={13} style={{ marginRight: 4 }} />
-                  Crisma: {formatDate(c.crismaData)}{c.crismaLocal ? ` — ${c.crismaLocal}` : ""}{c.padrinhosCrisma ? ` · Padrinhos: ${c.padrinhosCrisma}` : ""}
-                </p>
-              )}
+              {SACRAMENTOS_CONFIG.map((s) => {
+                const r = resumoSacramento(c, s.prefixo, s.titulo);
+                if (r.feito === null) return null;
+                const Icon = s.icon;
+                return (
+                  <p key={s.prefixo} style={{ ...styles.cardBody, ...(r.feito ? {} : { color: TEXT_MUTED }) }}>
+                    <Icon size={13} style={{ marginRight: 4 }} />
+                    {r.titulo}: {r.feito ? r.detalhe : "não recebeu"}
+                  </p>
+                );
+              })}
             </div>
           );
         })}
@@ -1896,98 +2084,16 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
         </section>
       )}
 
-      <div style={styles.card}>
-        <p style={styles.cardEyebrow}>MEU NASCIMENTO (OPCIONAL)</p>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Dia</label>
-          <select style={styles.input} value={form.nascimentoDia} onChange={(e) => setForm({ ...form, nascimentoDia: e.target.value })}>
-            <option value="">—</option>
-            {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        </div>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Mês</label>
-          <select style={styles.input} value={form.nascimentoMes} onChange={(e) => setForm({ ...form, nascimentoMes: e.target.value })}>
-            <option value="">—</option>
-            {MESES_NOME.map((m, i) => (
-              <option key={m} value={i + 1}>{m}</option>
-            ))}
-          </select>
-        </div>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Ano (opcional — deixe em branco se preferir não informar)</label>
-          <input
-            type="number"
-            style={styles.input}
-            value={form.nascimentoAno}
-            onChange={(e) => setForm({ ...form, nascimentoAno: e.target.value })}
-            placeholder="Ex: 1990"
-          />
-        </div>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Local de nascimento</label>
-          <input
-            style={styles.input}
-            value={form.nascimentoLocal}
-            onChange={(e) => setForm({ ...form, nascimentoLocal: e.target.value })}
-            placeholder="Cidade/estado"
-          />
-        </div>
-        <label style={styles.checkboxRow}>
-          <input
-            type="checkbox"
-            checked={!!form.aniversarioPublico}
-            onChange={(e) => setForm({ ...form, aniversarioPublico: e.target.checked })}
-          />
-          Aceito que meu aniversário apareça na Comunidade da turma quando for o meu dia
-        </label>
-      </div>
+      <NascimentoFields
+        form={form}
+        setForm={setForm}
+        titulo="MEU NASCIMENTO (OPCIONAL)"
+        consentimentoLabel="Aceito que meu aniversário apareça na Comunidade da turma quando for o meu dia"
+      />
 
-      <div style={styles.card}>
-        <p style={styles.cardEyebrow}><Droplet size={13} style={{ marginRight: 4 }} />BATISMO (OPCIONAL)</p>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Data</label>
-          <input type="date" style={styles.input} value={form.batismoData} onChange={(e) => setForm({ ...form, batismoData: e.target.value })} />
-        </div>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Local (paróquia/cidade)</label>
-          <input style={styles.input} value={form.batismoLocal} onChange={(e) => setForm({ ...form, batismoLocal: e.target.value })} />
-        </div>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Padrinhos</label>
-          <input style={styles.input} value={form.padrinhos} onChange={(e) => setForm({ ...form, padrinhos: e.target.value })} />
-        </div>
-      </div>
-
-      <div style={styles.card}>
-        <p style={styles.cardEyebrow}><UtensilsCrossed size={13} style={{ marginRight: 4 }} />PRIMEIRA EUCARISTIA (OPCIONAL)</p>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Data</label>
-          <input type="date" style={styles.input} value={form.eucaristiaData} onChange={(e) => setForm({ ...form, eucaristiaData: e.target.value })} />
-        </div>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Local (paróquia/cidade)</label>
-          <input style={styles.input} value={form.eucaristiaLocal} onChange={(e) => setForm({ ...form, eucaristiaLocal: e.target.value })} />
-        </div>
-      </div>
-
-      <div style={styles.card}>
-        <p style={styles.cardEyebrow}><Sparkles size={13} style={{ marginRight: 4 }} />CRISMA (OPCIONAL)</p>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Data</label>
-          <input type="date" style={styles.input} value={form.crismaData} onChange={(e) => setForm({ ...form, crismaData: e.target.value })} />
-        </div>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Local (paróquia/cidade)</label>
-          <input style={styles.input} value={form.crismaLocal} onChange={(e) => setForm({ ...form, crismaLocal: e.target.value })} />
-        </div>
-        <div style={styles.formRow}>
-          <label style={styles.label}>Padrinhos</label>
-          <input style={styles.input} value={form.padrinhosCrisma} onChange={(e) => setForm({ ...form, padrinhosCrisma: e.target.value })} />
-        </div>
-      </div>
+      {SACRAMENTOS_CONFIG.map((s) => (
+        <SacramentoCard key={s.prefixo} icon={s.icon} titulo={s.titulo} prefixo={s.prefixo} form={form} setForm={setForm} />
+      ))}
 
       <button style={styles.saveButton} onClick={salvar}>{saved ? "Salvo ✓" : "Salvar minha caminhada"}</button>
     </div>
@@ -2016,18 +2122,15 @@ function Lembranca({ nome, caminhada, encontros, onVoltar }) {
 
         <div style={styles.certificadoSacramentos}>
           <p style={styles.certificadoSubtitulo}>Minhas datas para guardar</p>
-          <p style={styles.certificadoLinha}>
-            <Droplet size={13} style={{ marginRight: 5 }} />Batismo — {caminhada.batismoData ? formatDate(caminhada.batismoData) : "a preencher"}
-            {caminhada.batismoLocal ? `, ${caminhada.batismoLocal}` : ""}{caminhada.padrinhos ? ` · Padrinhos: ${caminhada.padrinhos}` : ""}
-          </p>
-          <p style={styles.certificadoLinha}>
-            <UtensilsCrossed size={13} style={{ marginRight: 5 }} />Primeira Eucaristia — {caminhada.eucaristiaData ? formatDate(caminhada.eucaristiaData) : "a preencher"}
-            {caminhada.eucaristiaLocal ? `, ${caminhada.eucaristiaLocal}` : ""}
-          </p>
-          <p style={styles.certificadoLinha}>
-            <Sparkles size={13} style={{ marginRight: 5 }} />Crisma — {caminhada.crismaData ? formatDate(caminhada.crismaData) : "a preencher"}
-            {caminhada.crismaLocal ? `, ${caminhada.crismaLocal}` : ""}{caminhada.padrinhosCrisma ? ` · Padrinhos: ${caminhada.padrinhosCrisma}` : ""}
-          </p>
+          {SACRAMENTOS_CONFIG.map((s) => {
+            const r = resumoSacramento(caminhada, s.prefixo, s.titulo);
+            const Icon = s.icon;
+            return (
+              <p key={s.prefixo} style={styles.certificadoLinha}>
+                <Icon size={13} style={{ marginRight: 5 }} />{r.titulo} — {r.feito ? r.detalhe : "a preencher"}
+              </p>
+            );
+          })}
         </div>
 
         <p style={styles.certificadoMensagem}>
@@ -2956,9 +3059,8 @@ function StyleSheet() {
       @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
       @media print {
         body * { visibility: hidden; }
-        #certificado-imprimir, #certificado-imprimir *,
-        .imprimir-area, .imprimir-area * { visibility: visible; }
-        #certificado-imprimir, .imprimir-area { position: absolute; left: 0; top: 0; width: 100%; }
+        #certificado-imprimir, #certificado-imprimir * { visibility: visible; }
+        #certificado-imprimir { position: absolute; left: 0; top: 0; width: 100%; }
       }
     `}</style>
   );
@@ -3135,7 +3237,4 @@ const styles = {
   postCurtirButton: { display: "flex", alignItems: "center", gap: 6, background: "transparent", border: "1px solid rgba(122,35,51,0.25)", color: TEXT_MUTED, borderRadius: R.pill, padding: "6px 12px", fontSize: FS.sm, marginTop: 12, cursor: "pointer" },
   postCurtirButtonAtivo: { background: "rgba(122,35,51,0.1)", color: GOLD, borderColor: GOLD },
   emptyState: { color: TEXT_MUTED, fontSize: FS.md, textAlign: "center", padding: "20px 0" },
-  tabelaRelatorio: { borderCollapse: "collapse", width: "100%", fontSize: FS.sm },
-  tabelaTh: { border: "1px solid rgba(46,36,23,0.15)", padding: "8px 10px", background: NAVY_DEEP, textAlign: "left", fontWeight: 700, whiteSpace: "nowrap" },
-  tabelaTd: { border: "1px solid rgba(46,36,23,0.15)", padding: "8px 10px", whiteSpace: "nowrap" },
 };
