@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Flame, Calendar, BookOpen, Bell, Plus, Pencil, Trash2, X, MapPin, Pin,
   Lock, LogOut, User, Droplet, UtensilsCrossed, Sparkles, ExternalLink, Sun, Compass,
-  MessageCircle, Heart, Send,
+  MessageCircle, Heart, Send, Footprints, FileDown, IdCard,
 } from "lucide-react";
 import { auth, db } from "./firebase.js";
 import {
@@ -118,34 +118,6 @@ function youtubeEmbedUrl(url) {
   } catch {
     return null;
   }
-}
-
-function baixarICS(encontro) {
-  if (!encontro.data) return;
-  const [y, m, d] = encontro.data.split("-");
-  const dt = `${y}${m}${d}`;
-  const escapar = (s) => (s || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,");
-  const linhas = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "BEGIN:VEVENT",
-    `UID:${encontro.id}@emaus-catequese`,
-    `DTSTART;VALUE=DATE:${dt}`,
-    `SUMMARY:${escapar(encontro.tema)}`,
-    encontro.local ? `LOCATION:${escapar(encontro.local)}` : "",
-    encontro.observacoes ? `DESCRIPTION:${escapar(encontro.observacoes)}` : "",
-    "END:VEVENT",
-    "END:VCALENDAR",
-  ].filter(Boolean);
-  const blob = new Blob([linhas.join("\r\n")], { type: "text/calendar" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${(encontro.tema || "encontro").replace(/[^\w\-]+/g, "-")}.ics`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 function formatDate(iso) {
@@ -292,6 +264,30 @@ function calcularInfoLiturgica(date = new Date()) {
     isDomingo: weekday === 0,
     datasReferencia: { easter, ashWednesday, pentecost, firstAdventThisYear },
   };
+}
+
+// Paleta de destaque do app por tempo litúrgico (aprovada em prévia).
+// O fundo bege/creme continua o mesmo — só a cor de destaque muda.
+const PALETA_LITURGICA = {
+  "Tempo Comum": { accent: "#3E7A52", accentLight: "#5B9970" },
+  "Advento": { accent: "#5B2A5C", accentLight: "#7C4A7D" },
+  "Quaresma": { accent: "#5A3E8C", accentLight: "#7A5EAC" },
+  "Tríduo Pascal": { accent: "#8C1F2B", accentLight: "#B14350" },
+  "Tempo Pascal": { accent: "#A67C27", accentLight: "#C9A24B" },
+  "Tempo do Natal": { accent: "#A67C27", accentLight: "#C9A24B" },
+};
+const PALETA_FESTIVA = { accent: "#8C1F3D", accentLight: "#B14361" };
+
+function corTemaAtual(date = new Date()) {
+  const info = calcularInfoLiturgica(date);
+  if (sameDay(date, info.datasReferencia.pentecost)) return PALETA_FESTIVA;
+  return PALETA_LITURGICA[info.tempo] || PALETA_LITURGICA["Tempo Comum"];
+}
+
+if (typeof document !== "undefined") {
+  const tema = corTemaAtual();
+  document.documentElement.style.setProperty("--accent", tema.accent);
+  document.documentElement.style.setProperty("--accent-light", tema.accentLight);
 }
 
 const SEASON_CORES = {
@@ -473,8 +469,13 @@ export default function App() {
     }
   }, []);
 
-  const criarTurma = async (nome) => {
-    const nova = { id: `turma-${Date.now()}`, nome: nome.trim(), criadaEm: todayISO(), codigoConvite: gerarCodigoConvite(nome) };
+  const criarTurma = async (nome, codigoConvite) => {
+    const nova = {
+      id: `turma-${Date.now()}`,
+      nome: nome.trim(),
+      criadaEm: todayISO(),
+      codigoConvite: (codigoConvite || "").trim().toUpperCase() || gerarCodigoConvite(nome),
+    };
     await persistTurmas([...(turmas || []), nova]);
     setTurmaAtualId(nova.id);
     return nova;
@@ -810,13 +811,15 @@ function LoginScreen() {
 function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewRole, role, turmas, turmaAtualId, setTurmaAtualId, criarTurma, renomearTurma }) {
   const [criando, setCriando] = useState(false);
   const [nomeNovaTurma, setNomeNovaTurma] = useState("");
+  const [codigoNovaTurma, setCodigoNovaTurma] = useState("");
   const [editando, setEditando] = useState(false);
   const [nomeEdicao, setNomeEdicao] = useState("");
 
   const confirmarNovaTurma = async () => {
     if (!nomeNovaTurma.trim()) return;
-    await criarTurma(nomeNovaTurma);
+    await criarTurma(nomeNovaTurma, codigoNovaTurma);
     setNomeNovaTurma("");
+    setCodigoNovaTurma("");
     setCriando(false);
   };
 
@@ -880,8 +883,14 @@ function Header({ session, onLogout, tab, setTab, tabs, previewRole, setPreviewR
                 onChange={(e) => setNomeNovaTurma(e.target.value)}
                 autoFocus
               />
+              <input
+                style={{ ...styles.input, flex: "1 1 120px", minWidth: 0 }}
+                placeholder="Código (opcional)"
+                value={codigoNovaTurma}
+                onChange={(e) => setCodigoNovaTurma(e.target.value)}
+              />
               <button style={styles.saveButton} onClick={confirmarNovaTurma}>Criar</button>
-              <button style={styles.cancelButton} onClick={() => { setCriando(false); setNomeNovaTurma(""); }}><X size={14} /></button>
+              <button style={styles.cancelButton} onClick={() => { setCriando(false); setNomeNovaTurma(""); setCodigoNovaTurma(""); }}><X size={14} /></button>
             </>
           )}
         </div>
@@ -936,25 +945,18 @@ function Inicio({ data, setTab }) {
   return (
     <div style={styles.stack}>
       <section style={styles.hero}>
+        <img src={APP_ICON} alt="" style={styles.heroIcon} />
         <p style={styles.heroEyebrow}>CATEQUESE DE ADULTOS</p>
         <h1 style={styles.heroTitle}>Uma jornada, passo a passo,<br />rumo ao encontro com Deus.</h1>
         <div style={styles.candleRow}>
           {ordenados.map((e) => {
             const done = e.data && e.data < today;
             return (
-              <span
+              <Footprints
                 key={e.id}
-                style={{
-                  fontSize: 18,
-                  lineHeight: 1,
-                  display: "inline-block",
-                  transform: "scaleX(-1)",
-                  opacity: done ? 1 : 0.25,
-                  filter: done ? "none" : "grayscale(1)",
-                }}
-              >
-                🚶
-              </span>
+                size={18}
+                style={{ transform: "scaleX(-1)", color: done ? "var(--accent)" : "rgba(43,38,34,0.22)" }}
+              />
             );
           })}
           <span style={styles.candleLabel}>{concluidos} de {total} encontros concluídos</span>
@@ -1152,7 +1154,7 @@ function Liturgia({ role }) {
         )}
         <p style={{ ...styles.leitura, marginTop: 10 }}>
           Mostramos só as referências (livro, capítulo e versículo) — o texto bíblico completo tem tradução
-          oficial protegida por direitos autorais. Para ler o texto integral, abra um dos links abaixo.
+          oficial protegida por direitos autorais. Para ler o texto integral, abra o link abaixo.
         </p>
         <div style={styles.liturgiaLinks}>
           {ia.data?.fonte && (
@@ -1161,14 +1163,6 @@ function Liturgia({ role }) {
               <ExternalLink size={14} />
             </a>
           )}
-          <a href="https://www.cnbb.org.br/liturgia-diaria/" target="_blank" rel="noopener noreferrer" style={styles.liturgiaLink}>
-            <span><Sun size={15} /> Liturgia Diária — CNBB</span>
-            <ExternalLink size={14} />
-          </a>
-          <a href="https://liturgia.cancaonova.com/pb/" target="_blank" rel="noopener noreferrer" style={styles.liturgiaLink}>
-            <span><BookOpen size={15} /> Liturgia Diária — Canção Nova</span>
-            <ExternalLink size={14} />
-          </a>
         </div>
         {ia.data?.fonte && (
           <p style={{ ...styles.leitura, marginTop: 10, fontStyle: "italic" }}>
@@ -1687,11 +1681,6 @@ function Cronograma({ data, persist, role, session }) {
                     <h3 style={styles.timelineTema}>{e.tema}</h3>
                     {e.local && <span style={styles.metaItem}><MapPin size={13} /> {e.local}</span>}
                     {e.observacoes && <p style={styles.cardBody}>{e.observacoes}</p>}
-                    {e.data && (
-                      <button style={styles.linkButton} onClick={() => baixarICS(e)}>
-                        <Calendar size={12} style={{ marginRight: 4 }} />Adicionar ao calendário
-                      </button>
-                    )}
                     {role === "aluno" && (
                       <div style={{ marginTop: 6 }}>
                         <label style={styles.checkboxRow}>
@@ -1898,7 +1887,7 @@ function Material({ data, persist, role, session }) {
                   )}
                 </div>
                 <h3 style={styles.cardTitle}>{m.titulo}</h3>
-                {m.leitura && <p style={styles.leitura}>{m.leitura}</p>}
+                {m.leitura && <p style={{ ...styles.leitura, whiteSpace: "pre-wrap" }}>{m.leitura}</p>}
                 <button style={styles.linkButton} onClick={() => setOpenId(openId === m.id ? null : m.id)}>
                   {openId === m.id ? "Recolher" : "Ler conteúdo"} {openId === m.id ? "↑" : "↓"}
                 </button>
@@ -1956,8 +1945,13 @@ function MaterialForm({ form, setForm, encontros, onSave, onCancel }) {
         <input style={styles.input} value={form.titulo} onChange={(e) => setForm({ ...form, titulo: e.target.value })} />
       </div>
       <div style={styles.formRow}>
-        <label style={styles.label}>Leitura bíblica</label>
-        <input style={styles.input} value={form.leitura} onChange={(e) => setForm({ ...form, leitura: e.target.value })} placeholder="Ex: Lc 24, 13-35" />
+        <label style={styles.label}>Leitura bíblica (uma por linha, se houver mais de uma)</label>
+        <textarea
+          style={{ ...styles.input, minHeight: 60 }}
+          value={form.leitura}
+          onChange={(e) => setForm({ ...form, leitura: e.target.value })}
+          placeholder={"Ex: Lc 24, 13-35\n2 Tm 3, 14-17"}
+        />
       </div>
       <div style={styles.formRow}>
         <label style={styles.label}>Conteúdo</label>
@@ -2376,7 +2370,8 @@ function StyleSheet() {
 const NAVY = "#F2ECE1";
 const NAVY_DEEP = "#E6DCC8";
 const CARD = "#FFFCF7";
-const GOLD = "#7A2333";
+const GOLD = "var(--accent)";
+const GOLD_LIGHT = "var(--accent-light)";
 const PARCHMENT = "#F3EDE0";
 const TEXT_LIGHT = "#2B2622";
 const TEXT_MUTED = "rgba(43,38,34,0.62)";
@@ -2421,8 +2416,8 @@ const styles = {
   loginWrap: {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, minHeight: "100vh",
     backgroundColor: NAVY_DEEP,
-    backgroundImage: `linear-gradient(rgba(242,236,225,0.88), rgba(242,236,225,0.88)), url(${APP_ICON})`,
-    backgroundSize: "auto, 320px 320px",
+    backgroundImage: `linear-gradient(rgba(242,236,225,0.55), rgba(242,236,225,0.55)), url(${APP_ICON})`,
+    backgroundSize: "auto, 420px 420px",
     backgroundPosition: "center, center",
     backgroundRepeat: "no-repeat, no-repeat",
   },
@@ -2431,7 +2426,7 @@ const styles = {
   loginTabs: { display: "flex", background: "rgba(46,36,23,0.05)", borderRadius: R.button, padding: 3, gap: 2, marginBottom: 4 },
   loginTabButton: { flex: 1, border: "none", background: "transparent", color: TEXT_MUTED, fontSize: FS.base, padding: "8px 10px", borderRadius: R.icon, cursor: "pointer" },
   loginTabButtonActive: { background: GOLD, color: ON_ACCENT, fontWeight: 600 },
-  loginButton: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: `linear-gradient(180deg, #A8465C, ${GOLD})`, color: ON_ACCENT, border: "none", borderRadius: R.button, padding: "11px 16px", fontSize: FS.md, fontWeight: 600, cursor: "pointer", marginTop: 6, boxShadow: "0 6px 16px -8px rgba(122,35,51,0.5)" },
+  loginButton: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: `linear-gradient(180deg, ${GOLD_LIGHT}, ${GOLD})`, color: ON_ACCENT, border: "none", borderRadius: R.button, padding: "11px 16px", fontSize: FS.md, fontWeight: 600, cursor: "pointer", marginTop: 6, boxShadow: "0 6px 16px -8px rgba(122,35,51,0.5)" },
   loginErro: { color: "#E8927C", fontSize: FS.sm, margin: 0 },
   loginNote: { fontSize: FS.sm, color: TEXT_MUTED, lineHeight: 1.5, marginTop: 4 },
   header: { position: "sticky", top: 0, zIndex: 10, background: "rgba(242,236,225,0.82)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", borderBottom: "1px solid rgba(122,35,51,0.2)" },
@@ -2466,6 +2461,7 @@ const styles = {
   rolePillActive: { background: GOLD, color: ON_ACCENT, fontWeight: 600 },
   stack: { display: "flex", flexDirection: "column", gap: 16 },
   hero: { position: "relative", background: `linear-gradient(160deg, ${CARD}, ${NAVY_DEEP})`, borderRadius: R.card, padding: "28px 22px", overflow: "hidden", border: "1px solid rgba(122,35,51,0.25)" },
+  heroIcon: { position: "absolute", top: 18, right: 18, width: 56, height: 56, borderRadius: R.box, objectFit: "cover", boxShadow: "0 10px 24px -10px rgba(43,38,34,0.35)" },
   heroHorizonte: { position: "absolute", inset: 0, overflow: "hidden" },
   heroSol: { position: "absolute", bottom: 36, left: "50%", transform: "translateX(-50%)", width: 130, height: 130, borderRadius: "50%", background: `radial-gradient(circle, rgba(201,162,75,0.55), rgba(201,162,75,0.15) 55%, transparent 75%)` },
   heroEstrada: { position: "absolute", bottom: 0, left: 0, width: "100%", height: "100%" },
@@ -2492,7 +2488,7 @@ const styles = {
   avisoTitleSmall: { display: "flex", alignItems: "center", fontFamily: "'Cormorant Garamond', serif", fontWeight: 500, fontSize: FS.lg, margin: "6px 0 2px" },
   sectionHeaderRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-end" },
   sectionTitle: { fontFamily: "'Cormorant Garamond', serif", fontWeight: 600, fontSize: FS.section, margin: 0, borderBottom: `3px solid ${GOLD}`, display: "inline-block", paddingBottom: 6 },
-  addButton: { display: "flex", alignItems: "center", gap: 6, background: `linear-gradient(180deg, #A8465C, ${GOLD})`, color: ON_ACCENT, border: "none", borderRadius: R.button, padding: "8px 14px", fontSize: FS.base, fontWeight: 600, cursor: "pointer", boxShadow: "0 6px 16px -8px rgba(122,35,51,0.5)" },
+  addButton: { display: "flex", alignItems: "center", gap: 6, background: `linear-gradient(180deg, ${GOLD_LIGHT}, ${GOLD})`, color: ON_ACCENT, border: "none", borderRadius: R.button, padding: "8px 14px", fontSize: FS.base, fontWeight: 600, cursor: "pointer", boxShadow: "0 6px 16px -8px rgba(122,35,51,0.5)" },
   timeline: { display: "flex", flexDirection: "column" },
   timelineItem: { display: "flex", gap: 14 },
   timelineMarker: { display: "flex", flexDirection: "column", alignItems: "center" },
@@ -2511,7 +2507,7 @@ const styles = {
   input: { background: NAVY_DEEP, border: "1px solid rgba(46,36,23,0.12)", borderRadius: R.icon, padding: "9px 10px", color: TEXT_LIGHT, fontSize: FS.md, width: "100%" },
   formActions: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 },
   cancelButton: { display: "flex", alignItems: "center", gap: 4, background: "transparent", border: "1px solid rgba(46,36,23,0.15)", color: TEXT_LIGHT, borderRadius: R.icon, padding: "7px 12px", fontSize: FS.base, cursor: "pointer" },
-  saveButton: { background: `linear-gradient(180deg, #A8465C, ${GOLD})`, border: "none", color: ON_ACCENT, fontWeight: 600, borderRadius: R.button, padding: "7px 16px", fontSize: FS.base, cursor: "pointer", boxShadow: "0 6px 16px -8px rgba(122,35,51,0.5)" },
+  saveButton: { background: `linear-gradient(180deg, ${GOLD_LIGHT}, ${GOLD})`, border: "none", color: ON_ACCENT, fontWeight: 600, borderRadius: R.button, padding: "7px 16px", fontSize: FS.base, cursor: "pointer", boxShadow: "0 6px 16px -8px rgba(122,35,51,0.5)" },
   checkboxRow: { display: "flex", alignItems: "center", gap: 8, fontSize: FS.base, color: TEXT_MUTED },
   leitura: { fontSize: FS.base, fontStyle: "italic", color: TEXT_MUTED, margin: "0 0 6px" },
   paraCasaBox: { marginTop: 14, padding: "12px 14px", background: "rgba(122,35,51,0.06)", border: "1px dashed rgba(122,35,51,0.4)", borderRadius: R.box },
