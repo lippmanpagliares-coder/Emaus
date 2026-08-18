@@ -1519,23 +1519,6 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
     persist({ ...data, calendarioAulas: { ...cal, periodosFerias: periodosFerias.filter((p) => p.id !== id) } });
   };
 
-  // Cria um encontro (na aba Caminhada) pra cada data marcada "tem aula" que ainda não tem um —
-  // nunca mexe nos que já existem, então não tem risco de apagar tema/conteúdo já preenchido.
-  const datasComEncontro = new Set(data.encontros.map((e) => e.data));
-  const datasSemEncontro = diasAula.filter((d) => diaTemAula(d) && !datasComEncontro.has(d));
-  const gerarEncontros = () => {
-    if (datasSemEncontro.length === 0) return;
-    const novos = datasSemEncontro.map((d, i) => ({
-      id: `e${Date.now()}-${i}`,
-      numero: data.encontros.length + i + 1,
-      data: d,
-      tema: "Encontro a definir",
-      local: "",
-      observacoes: "",
-    }));
-    persist({ ...data, encontros: [...data.encontros, ...novos] });
-  };
-
   const today = todayISO();
   const ordenados = [...data.encontros].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999"));
   const turmaEncerradaReal = ordenados.length > 0 && ordenados.every((e) => e.data && e.data < today);
@@ -1624,20 +1607,6 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
               <button style={styles.addButton} onClick={adicionarPeriodoFerias}><Plus size={14} /> Adicionar período de férias</button>
             </div>
           </div>
-
-          {diasAula.length > 0 && (
-            <div style={styles.card}>
-              <p style={styles.cardEyebrow}>ENCONTROS NA CAMINHADA</p>
-              <p style={styles.cardBody}>
-                {datasSemEncontro.length > 0
-                  ? `${datasSemEncontro.length} ${datasSemEncontro.length === 1 ? "data marcada" : "datas marcadas"} com aula ainda não ${datasSemEncontro.length === 1 ? "tem" : "têm"} um encontro criado na Caminhada.`
-                  : "Todas as datas marcadas com aula já têm um encontro criado na Caminhada."}
-              </p>
-              {datasSemEncontro.length > 0 && (
-                <button style={styles.addButton} onClick={gerarEncontros}><Plus size={14} /> Gerar encontros que faltam</button>
-              )}
-            </div>
-          )}
 
           <div style={styles.card}>
             <p style={styles.cardEyebrow}>{diasAula.length > 0 ? `${diasComAula} DE ${diasAula.length} DATAS COM AULA` : "DATAS"}</p>
