@@ -103,6 +103,30 @@ const caminhadaVazia = () => ({
   crismaData: "", crismaLocal: "", padrinhosCrisma: "",
 });
 
+const DIAS_SEMANA_NOME = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+
+const calendarioAulasVazio = () => ({ inicio: "", fim: "", diaSemana: 6, excecoes: {} });
+
+// Gera todas as datas de um mesmo dia da semana entre início e fim (inclusive).
+function gerarDiasAula(inicio, fim, diaSemana) {
+  if (!inicio || !fim) return [];
+  const [y1, m1, d1] = inicio.split("-").map(Number);
+  const [y2, m2, d2] = fim.split("-").map(Number);
+  const fimData = new Date(y2, m2 - 1, d2);
+  let atual = new Date(y1, m1 - 1, d1);
+  if (atual > fimData) return [];
+  while (atual.getDay() !== Number(diaSemana)) {
+    atual.setDate(atual.getDate() + 1);
+    if (atual > fimData) return [];
+  }
+  const datas = [];
+  while (atual <= fimData) {
+    datas.push(`${atual.getFullYear()}-${String(atual.getMonth() + 1).padStart(2, "0")}-${String(atual.getDate()).padStart(2, "0")}`);
+    atual.setDate(atual.getDate() + 7);
+  }
+  return datas;
+}
+
 function youtubeEmbedUrl(url) {
   if (!url) return null;
   try {
@@ -1404,6 +1428,22 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   const [verLembranca, setVerLembranca] = useState(false);
   const [encontroPresencaId, setEncontroPresencaId] = useState(null);
   const [verRelatorio, setVerRelatorio] = useState(null);
+  const [verCalendario, setVerCalendario] = useState(false);
+
+  const cal = data.calendarioAulas || calendarioAulasVazio();
+  const diasAula = gerarDiasAula(cal.inicio, cal.fim, cal.diaSemana);
+  const diasComAula = diasAula.filter((d) => cal.excecoes?.[d] !== false).length;
+
+  const atualizarCalendario = (patch) => {
+    persist({ ...data, calendarioAulas: { ...cal, ...patch } });
+  };
+
+  const alternarDiaAula = (dataISO, temAula) => {
+    const excecoes = { ...(cal.excecoes || {}) };
+    if (temAula) delete excecoes[dataISO];
+    else excecoes[dataISO] = false;
+    persist({ ...data, calendarioAulas: { ...cal, excecoes } });
+  };
 
   const today = todayISO();
   const ordenados = [...data.encontros].sort((a, b) => (a.data || "9999").localeCompare(b.data || "9999"));
@@ -1429,6 +1469,64 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
       );
       persist({ ...data, encontros: nextEncontros });
     };
+
+    if (verCalendario) {
+      return (
+        <div style={styles.stack}>
+          <button style={styles.linkButton} onClick={() => setVerCalendario(false)}>← Voltar</button>
+          <h2 style={styles.sectionTitle}>Calendário de aulas</h2>
+          <p style={styles.leitura}>
+            Defina o período do ano catequético (em média de maio a abril) e o dia da semana das aulas. O app
+            lista todas as datas — depois é só marcar quais realmente têm aula, tirando férias e feriados.
+          </p>
+
+          <div style={styles.card}>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Início do ano catequético</label>
+              <input type="date" style={styles.input} value={cal.inicio} onChange={(e) => atualizarCalendario({ inicio: e.target.value })} />
+            </div>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Fim do ano catequético</label>
+              <input type="date" style={styles.input} value={cal.fim} onChange={(e) => atualizarCalendario({ fim: e.target.value })} />
+            </div>
+            <div style={styles.formRow}>
+              <label style={styles.label}>Dia da semana das aulas</label>
+              <select
+                style={styles.input}
+                value={cal.diaSemana}
+                onChange={(e) => atualizarCalendario({ diaSemana: Number(e.target.value) })}
+              >
+                {DIAS_SEMANA_NOME.map((nome, i) => <option key={i} value={i}>{nome}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <p style={styles.cardEyebrow}>{diasAula.length > 0 ? `${diasComAula} DE ${diasAula.length} DATAS COM AULA` : "DATAS"}</p>
+            {diasAula.length === 0 ? (
+              <p style={styles.emptyState}>Preencha o início e o fim acima para gerar as datas.</p>
+            ) : (
+              <div style={styles.stack}>
+                {diasAula.map((d) => {
+                  const temAula = cal.excecoes?.[d] !== false;
+                  return (
+                    <div key={d} style={styles.timelineHead}>
+                      <span style={{ ...styles.cardBody, ...(temAula ? {} : { color: TEXT_MUTED, textDecoration: "line-through" }) }}>
+                        {formatDate(d)}
+                      </span>
+                      <label style={styles.checkboxRow}>
+                        <input type="checkbox" checked={temAula} onChange={(e) => alternarDiaAula(d, e.target.checked)} />
+                        Tem aula
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
 
     if (verRelatorio === "presenca") {
       return (
@@ -1515,6 +1613,16 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
             <p style={styles.leitura}>Compartilhe esse código com os catecúmenos — eles usam para se cadastrar nesta turma.</p>
           </div>
         )}
+
+        <div style={styles.card}>
+          <p style={styles.cardEyebrow}>CALENDÁRIO DE AULAS</p>
+          <p style={styles.cardBody}>
+            {diasAula.length > 0
+              ? `${diasComAula} de ${diasAula.length} datas programadas com aula.`
+              : "Defina o período letivo para saber quantos encontros vocês vão ter no ano."}
+          </p>
+          <button style={styles.addButton} onClick={() => setVerCalendario(true)}><Calendar size={14} /> Configurar calendário</button>
+        </div>
 
         <div style={styles.card}>
           <p style={styles.cardEyebrow}>RELATÓRIOS</p>
