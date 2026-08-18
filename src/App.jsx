@@ -1475,15 +1475,25 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   const [encontroPresencaId, setEncontroPresencaId] = useState(null);
   const [verRelatorio, setVerRelatorio] = useState(null);
   const [verCalendario, setVerCalendario] = useState(false);
+  const [nomeFerias, setNomeFerias] = useState("");
+  const [inicioFerias, setInicioFerias] = useState("");
+  const [fimFerias, setFimFerias] = useState("");
 
   const cal = data.calendarioAulas || calendarioAulasVazio();
   const diasAula = gerarDiasAula(cal.inicio, cal.fim, cal.diaSemana);
   const feriadosPeriodo = feriadosNoPeriodo(cal.inicio, cal.fim);
-  // Sem indicação manual, o dia já vem desmarcado se cair em feriado/ponto facultativo —
-  // a catequista continua podendo marcar "tem aula" mesmo assim, se for o caso da turma dela.
-  const diaTemAulaPadrao = (d) => !feriadosPeriodo[d];
+  const periodosFerias = cal.periodosFerias || [];
+  const feriasDoDia = (d) => periodosFerias.find((p) => p.inicio && p.fim && d >= p.inicio && d <= p.fim);
+  // Sem indicação manual, o dia já vem desmarcado se cair em feriado/ponto facultativo ou em
+  // período de férias — a catequista continua podendo marcar "tem aula" mesmo assim.
+  const diaTemAulaPadrao = (d) => !feriadosPeriodo[d] && !feriasDoDia(d);
   const diaTemAula = (d) => (cal.excecoes?.[d] !== undefined ? cal.excecoes[d] : diaTemAulaPadrao(d));
   const diasComAula = diasAula.filter(diaTemAula).length;
+  const motivoDia = (d) => {
+    if (feriadosPeriodo[d]) return feriadosPeriodo[d];
+    const feria = feriasDoDia(d);
+    return feria ? (feria.nome || "Férias") : null;
+  };
 
   const atualizarCalendario = (patch) => {
     persist({ ...data, calendarioAulas: { ...cal, ...patch } });
@@ -1494,6 +1504,19 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
     if (temAula === diaTemAulaPadrao(dataISO)) delete excecoes[dataISO];
     else excecoes[dataISO] = temAula;
     persist({ ...data, calendarioAulas: { ...cal, excecoes } });
+  };
+
+  const adicionarPeriodoFerias = () => {
+    if (!inicioFerias || !fimFerias) return;
+    const novo = { id: `f${Date.now()}`, inicio: inicioFerias, fim: fimFerias, nome: nomeFerias.trim() };
+    persist({ ...data, calendarioAulas: { ...cal, periodosFerias: [...periodosFerias, novo] } });
+    setNomeFerias("");
+    setInicioFerias("");
+    setFimFerias("");
+  };
+
+  const removerPeriodoFerias = (id) => {
+    persist({ ...data, calendarioAulas: { ...cal, periodosFerias: periodosFerias.filter((p) => p.id !== id) } });
   };
 
   const today = todayISO();
@@ -1529,7 +1552,8 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
           <p style={styles.leitura}>
             Defina o período do ano catequético (em média de maio a abril) e o dia da semana das aulas. O app
             lista todas as datas e já desmarca sozinho os feriados nacionais e de São Paulo/SP (conferir se
-            valem pra sua paróquia) — o resto é só marcar conforme as férias da turma.
+            valem pra sua paróquia). Adicione também os períodos de férias da turma abaixo — eles também
+            entram desmarcados automaticamente.
           </p>
 
           <div style={styles.card}>
@@ -1554,6 +1578,37 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
           </div>
 
           <div style={styles.card}>
+            <p style={styles.cardEyebrow}>PERÍODOS DE FÉRIAS</p>
+            {periodosFerias.length > 0 && (
+              <div style={{ ...styles.stack, marginBottom: 10 }}>
+                {periodosFerias.map((p) => (
+                  <div key={p.id} style={styles.timelineHead}>
+                    <span style={styles.cardBody}>
+                      {p.nome ? `${p.nome} — ` : ""}{formatDate(p.inicio)} até {formatDate(p.fim)}
+                    </span>
+                    <button style={styles.iconButton} onClick={() => removerPeriodoFerias(p.id)}><Trash2 size={13} /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={styles.formCard}>
+              <div style={styles.formRow}>
+                <label style={styles.label}>Nome (opcional)</label>
+                <input style={styles.input} value={nomeFerias} onChange={(e) => setNomeFerias(e.target.value)} placeholder="Ex: Férias de julho" />
+              </div>
+              <div style={styles.formRow}>
+                <label style={styles.label}>De</label>
+                <input type="date" style={styles.input} value={inicioFerias} onChange={(e) => setInicioFerias(e.target.value)} />
+              </div>
+              <div style={styles.formRow}>
+                <label style={styles.label}>Até</label>
+                <input type="date" style={styles.input} value={fimFerias} onChange={(e) => setFimFerias(e.target.value)} />
+              </div>
+              <button style={styles.addButton} onClick={adicionarPeriodoFerias}><Plus size={14} /> Adicionar período de férias</button>
+            </div>
+          </div>
+
+          <div style={styles.card}>
             <p style={styles.cardEyebrow}>{diasAula.length > 0 ? `${diasComAula} DE ${diasAula.length} DATAS COM AULA` : "DATAS"}</p>
             {diasAula.length === 0 ? (
               <p style={styles.emptyState}>Preencha o início e o fim acima para gerar as datas.</p>
@@ -1561,12 +1616,12 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
               <div style={styles.stack}>
                 {diasAula.map((d) => {
                   const temAula = diaTemAula(d);
-                  const feriado = feriadosPeriodo[d];
+                  const motivo = motivoDia(d);
                   return (
                     <div key={d} style={styles.timelineHead}>
                       <span style={{ ...styles.cardBody, ...(temAula ? {} : { color: TEXT_MUTED, textDecoration: "line-through" }) }}>
                         {formatDate(d)}
-                        {feriado && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, textDecoration: "none", marginLeft: 6 }}>· {feriado}</span>}
+                        {motivo && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, textDecoration: "none", marginLeft: 6 }}>· {motivo}</span>}
                       </span>
                       <label style={styles.checkboxRow}>
                         <input type="checkbox" checked={temAula} onChange={(e) => alternarDiaAula(d, e.target.checked)} />
