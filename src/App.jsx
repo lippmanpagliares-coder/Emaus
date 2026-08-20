@@ -3503,6 +3503,33 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
 
   const membrosTurma = (users || []).filter((u) => u.papel === "catequista" || u.turmaId === turmaAtualId);
 
+  // Acha quem foi marcado com @Nome no texto — procura o nome inteiro (não só a primeira
+  // palavra), já que a sugestão de menção insere o nome completo da pessoa.
+  const detectarMencionados = (texto) => {
+    const textoLower = (texto || "").toLowerCase();
+    return membrosTurma.filter((u) => u.id !== session?.id && textoLower.includes(`@${u.nome.toLowerCase()}`));
+  };
+
+  const notificarMencoes = async (texto, contexto) => {
+    const mencionados = detectarMencionados(texto);
+    if (mencionados.length === 0) return;
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      await fetch("/api/notificar-mencao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idToken,
+          alunoIds: mencionados.map((u) => u.id),
+          titulo: `${session?.nome || "Alguém"} mencionou você`,
+          mensagem: contexto,
+        }),
+      });
+    } catch {
+      // notificação é um extra — se falhar, o post/comentário já foi salvo normalmente
+    }
+  };
+
   const detectarMencao = (valor, cursor) => {
     const antesDoCursor = valor.slice(0, cursor);
     const match = antesDoCursor.match(/@([^\s@]*)$/);
@@ -3584,6 +3611,7 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
       comentarios: [],
     };
     persist({ ...data, posts: [novo, ...posts] });
+    notificarMencoes(corpo, "Num post na Comunidade da turma.");
     setTexto("");
     setLinkUrl("");
     setTipo("geral");
@@ -3622,6 +3650,7 @@ function Comunidade({ data, persist, role, session, users, turmaAtualId }) {
       ...data,
       posts: posts.map((p) => (p.id === postId ? { ...p, comentarios: [...(p.comentarios || []), novo] } : p)),
     });
+    notificarMencoes(textoComentario, "Num comentário na Comunidade da turma.");
   };
 
   const removeComentario = (postId, comentarioId) => {
