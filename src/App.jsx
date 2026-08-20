@@ -3941,7 +3941,7 @@ const styles = {
   previewBanner: { background: "rgba(122,35,51,0.15)", border: "1px dashed rgba(122,35,51,0.5)", borderRadius: R.button, padding: "10px 14px", fontSize: FS.sm, marginBottom: 14, color: TEXT_LIGHT },
   previewRow: { display: "flex", alignItems: "center", gap: 8, padding: "0 18px 10px" },
   turmaRow: { display: "flex", alignItems: "center", gap: 8, padding: "0 18px 10px", flexWrap: "wrap" },
-  turmaSelect: { flex: "1 1 140px", minWidth: 0, background: "transparent", border: `1px solid rgba(122,35,51,0.3)`, borderRadius: R.icon, padding: "6px 8px", color: TEXT_LIGHT, fontSize: FS.base, fontFamily: "'Karla', sans-serif" },
+  turmaSelect: { flex: "1 1 140px", minWidth: 0, background: "transparent", border: `1px solid rgba(122,35,51,0.3)`, borderRadius: R.icon, padding: "6px 8px", color: TEXT_LIGHT, fontSize: 16, fontFamily: "'Karla', sans-serif" },
   turmaAddButton: { display: "flex", alignItems: "center", gap: 4, background: "transparent", border: `1px dashed rgba(122,35,51,0.4)`, color: GOLD, borderRadius: R.icon, padding: "6px 10px", fontSize: FS.sm, cursor: "pointer", whiteSpace: "nowrap" },
   previewLabel: { fontSize: FS.sm, color: TEXT_MUTED, fontFamily: "'Courier Prime', monospace", letterSpacing: "0.05em" },
   roleToggle: { display: "flex", background: "rgba(46,36,23,0.05)", borderRadius: R.button, padding: 3, gap: 2 },
@@ -3992,7 +3992,9 @@ const styles = {
   formCard: { background: "rgba(46,36,23,0.04)", border: "1px dashed rgba(122,35,51,0.4)", borderRadius: R.box, padding: 16, display: "flex", flexDirection: "column", gap: 10 },
   formRow: { display: "flex", flexDirection: "column", gap: 4 },
   label: { fontSize: FS.sm, color: TEXT_MUTED, fontWeight: 500 },
-  input: { background: NAVY_DEEP, border: "1px solid rgba(46,36,23,0.12)", borderRadius: R.icon, padding: "9px 10px", color: TEXT_LIGHT, fontSize: FS.md, width: "100%" },
+  // fontSize 16 (não FS.md) de propósito: abaixo de 16px o iPhone dá zoom automático sozinho
+  // ao tocar no campo, e a página fica "presa" no zoom até a pessoa belisar a tela pra voltar.
+  input: { background: NAVY_DEEP, border: "1px solid rgba(46,36,23,0.12)", borderRadius: R.icon, padding: "9px 10px", color: TEXT_LIGHT, fontSize: 16, width: "100%" },
   formActions: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 },
   cancelButton: { display: "flex", alignItems: "center", gap: 4, background: "transparent", border: "1px solid rgba(46,36,23,0.15)", color: TEXT_LIGHT, borderRadius: R.icon, padding: "7px 12px", fontSize: FS.base, cursor: "pointer" },
   saveButton: { background: `linear-gradient(180deg, ${GOLD_LIGHT}, ${GOLD})`, border: "none", color: ON_ACCENT, fontWeight: 600, borderRadius: R.button, padding: "7px 16px", fontSize: FS.base, cursor: "pointer", boxShadow: "0 6px 16px -8px rgba(122,35,51,0.5)" },
