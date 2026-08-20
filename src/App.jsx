@@ -3,6 +3,7 @@ import {
   Flame, Calendar, BookOpen, Bell, Plus, Pencil, Trash2, X, MapPin, Pin,
   Lock, LogOut, User, Droplet, UtensilsCrossed, Sparkles, ExternalLink, Sun, Compass,
   MessageCircle, Heart, Send, Footprints, FileDown, IdCard, Paperclip, Upload, Link2, Check,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { auth, db, storage } from "./firebase.js";
 import {
@@ -2002,6 +2003,9 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   const [formManual, setFormManual] = useState(null);
   const [vinculandoId, setVinculandoId] = useState(null);
   const [alvoVinculo, setAlvoVinculo] = useState("");
+  const [mesGrade, setMesGrade] = useState(null);
+  const [diaSelecionado, setDiaSelecionado] = useState(null);
+  const [formDia, setFormDia] = useState({ tema: "", local: "", observacoes: "" });
 
   const catecumenosManuais = data.catecumenosManuais || [];
 
@@ -2087,6 +2091,7 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
   const diaTemAulaPadrao = (d) => !feriadosPeriodo[d] && !feriasDoDia(d);
   const diaTemAula = (d) => (cal.excecoes?.[d] !== undefined ? cal.excecoes[d] : diaTemAulaPadrao(d));
   const diasComAula = diasAula.filter(diaTemAula).length;
+  const diasComAulaGerados = diasAula.filter((d) => diaTemAula(d) && data.encontros.some((e) => e.data === d)).length;
   const motivoDia = (d) => {
     if (feriadosPeriodo[d]) return feriadosPeriodo[d];
     const feria = feriasDoDia(d);
@@ -2115,6 +2120,60 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
 
   const removerPeriodoFerias = (id) => {
     persist({ ...data, calendarioAulas: { ...cal, periodosFerias: periodosFerias.filter((p) => p.id !== id) } });
+  };
+
+  // O calendário em grade não guarda nada próprio além do dia clicado — o tema vira o encontro de
+  // verdade (o mesmo que aparece em "Nossa Caminhada"), então "gerado" significa simplesmente que já
+  // existe um encontro salvo pra essa data.
+  const encontroPorData = (dataISO) => data.encontros.find((e) => e.data === dataISO);
+
+  const mesPadraoGrade = (() => {
+    const base = cal.inicio || todayISO();
+    const [y, m] = base.split("-").map(Number);
+    return { ano: y, mes: m - 1 };
+  })();
+  const { ano: anoGrade, mes: mesGradeNum } = mesGrade || mesPadraoGrade;
+
+  const irParaMes = (deltaMeses) => {
+    const base = mesGrade || mesPadraoGrade;
+    let mes = base.mes + deltaMeses;
+    let ano = base.ano;
+    if (mes < 0) { mes = 11; ano -= 1; }
+    if (mes > 11) { mes = 0; ano += 1; }
+    setMesGrade({ ano, mes });
+    setDiaSelecionado(null);
+  };
+
+  const abrirDiaGrade = (dataISO) => {
+    const existente = encontroPorData(dataISO);
+    setFormDia({ tema: existente?.tema || "", local: existente?.local || "", observacoes: existente?.observacoes || "" });
+    setDiaSelecionado(dataISO);
+  };
+
+  const liberarFeriadoNaGrade = (dataISO) => {
+    alternarDiaAula(dataISO, true);
+    abrirDiaGrade(dataISO);
+  };
+
+  const salvarDiaGrade = () => {
+    if (!diaSelecionado || !formDia.tema.trim()) return;
+    const existente = encontroPorData(diaSelecionado);
+    const next = existente
+      ? data.encontros.map((e) => (e.id === existente.id ? { ...e, ...formDia, tema: formDia.tema.trim() } : e))
+      : [...data.encontros, { id: `e${Date.now()}`, numero: data.encontros.length + 1, data: diaSelecionado, ...formDia, tema: formDia.tema.trim() }];
+    persist({ ...data, encontros: next });
+    setDiaSelecionado(null);
+  };
+
+  const removerEncontroDaGrade = () => {
+    const existente = encontroPorData(diaSelecionado);
+    if (existente) persist({ ...data, encontros: data.encontros.filter((e) => e.id !== existente.id) });
+    setDiaSelecionado(null);
+  };
+
+  const marcarSemAulaNaGrade = () => {
+    alternarDiaAula(diaSelecionado, false);
+    setDiaSelecionado(null);
   };
 
   const today = todayISO();
@@ -2256,9 +2315,9 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
           <h2 style={styles.sectionTitle}>Calendário de aulas</h2>
           <p style={styles.leitura}>
             Defina o período do ano catequético (em média de maio a abril) e o dia da semana das aulas. O app
-            lista todas as datas e já desmarca sozinho os feriados nacionais e de São Paulo/SP (conferir se
-            valem pra sua paróquia). Adicione também os períodos de férias da turma abaixo — eles também
-            entram desmarcados automaticamente.
+            monta o calendário sozinho e já desmarca os feriados nacionais e de São Paulo/SP (conferir se valem
+            pra sua paróquia) — adicione também os períodos de férias da turma abaixo. Depois é só clicar num
+            dia de aula pra definir o tema quando quiser, sem precisar decidir tudo de uma vez.
           </p>
 
           <div style={styles.card}>
@@ -2314,28 +2373,120 @@ function Caminhada({ users, persistUsers, session, data, persist, turmaAtualId, 
           </div>
 
           <div style={styles.card}>
-            <p style={styles.cardEyebrow}>{diasAula.length > 0 ? `${diasComAula} DE ${diasAula.length} DATAS COM AULA` : "DATAS"}</p>
+            <p style={styles.cardEyebrow}>
+              {diasAula.length > 0 ? `${diasComAulaGerados} DE ${diasComAula} AULAS COM ENCONTRO GERADO` : "CALENDÁRIO"}
+            </p>
             {diasAula.length === 0 ? (
-              <p style={styles.emptyState}>Preencha o início e o fim acima para gerar as datas.</p>
+              <p style={styles.emptyState}>Preencha o início e o fim acima para gerar o calendário.</p>
             ) : (
-              <div style={styles.stack}>
-                {diasAula.map((d) => {
-                  const temAula = diaTemAula(d);
-                  const motivo = motivoDia(d);
-                  return (
-                    <div key={d} style={styles.timelineHead}>
-                      <span style={{ ...styles.cardBody, ...(temAula ? {} : { color: TEXT_MUTED, textDecoration: "line-through" }) }}>
-                        {formatDate(d)}
-                        {motivo && <span style={{ fontSize: FS.sm, color: TEXT_MUTED, textDecoration: "none", marginLeft: 6 }}>· {motivo}</span>}
-                      </span>
-                      <label style={styles.checkboxRow}>
-                        <input type="checkbox" checked={temAula} onChange={(e) => alternarDiaAula(d, e.target.checked)} />
-                        Tem aula
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
+              <>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <button style={styles.iconButton} onClick={() => irParaMes(-1)}><ChevronLeft size={16} /></button>
+                  <span style={{ fontSize: FS.base, fontWeight: 600 }}>{MESES_NOME[mesGradeNum]} de {anoGrade}</span>
+                  <button style={styles.iconButton} onClick={() => irParaMes(1)}><ChevronRight size={16} /></button>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, textAlign: "center", marginBottom: 4 }}>
+                  {["D", "S", "T", "Q", "Q", "S", "S"].map((letra, i) => (
+                    <span key={i} style={{ fontSize: FS.tiny, color: TEXT_MUTED }}>{letra}</span>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+                  {(() => {
+                    const primeiroDiaSemana = new Date(anoGrade, mesGradeNum, 1).getDay();
+                    const totalDiasMes = new Date(anoGrade, mesGradeNum + 1, 0).getDate();
+                    const celulas = [];
+                    for (let i = 0; i < primeiroDiaSemana; i++) celulas.push(<span key={`vazio${i}`} />);
+                    for (let dia = 1; dia <= totalDiasMes; dia++) {
+                      const dataISO = `${anoGrade}-${String(mesGradeNum + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+                      const configurado = diasAula.includes(dataISO);
+                      const temAula = configurado && diaTemAula(dataISO);
+                      const gerado = configurado && !!encontroPorData(dataISO);
+                      celulas.push(
+                        <button
+                          key={dataISO}
+                          disabled={!configurado}
+                          onClick={configurado ? () => abrirDiaGrade(dataISO) : undefined}
+                          style={{
+                            aspectRatio: "1", borderRadius: R.icon, fontSize: FS.sm, fontFamily: "'Karla', sans-serif",
+                            cursor: configurado ? "pointer" : "default",
+                            border: temAula ? `1.5px solid ${GOLD}` : "1px solid transparent",
+                            background: gerado ? GOLD : "transparent",
+                            color: !configurado ? TEXT_MUTED : gerado ? ON_ACCENT : temAula ? GOLD : TEXT_MUTED,
+                            textDecoration: configurado && !temAula ? "line-through" : "none",
+                            fontWeight: temAula ? 600 : 400,
+                          }}
+                          title={configurado && !temAula ? motivoDia(dataISO) : undefined}
+                        >
+                          {dia}
+                        </button>
+                      );
+                    }
+                    return celulas;
+                  })()}
+                </div>
+
+                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12, fontSize: FS.xs, color: TEXT_MUTED }}>
+                  <span><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 3, background: GOLD, marginRight: 4, verticalAlign: "middle" }} />gerado</span>
+                  <span><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 3, border: `1.5px solid ${GOLD}`, marginRight: 4, verticalAlign: "middle" }} />pendente</span>
+                  <span><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 3, border: `1px solid ${TEXT_MUTED}`, marginRight: 4, verticalAlign: "middle" }} />feriado/férias</span>
+                </div>
+
+                {diaSelecionado && (
+                  <div style={{ ...styles.formCard, marginTop: 14 }}>
+                    <p style={styles.cardEyebrow}>{formatDate(diaSelecionado)}</p>
+                    {!diaTemAula(diaSelecionado) ? (
+                      <>
+                        <p style={styles.cardBody}>Esse dia está desmarcado automaticamente — {motivoDia(diaSelecionado)}.</p>
+                        <div style={styles.formActions}>
+                          <button style={styles.cancelButton} onClick={() => setDiaSelecionado(null)}><X size={14} /> Fechar</button>
+                          <button style={styles.saveButton} onClick={() => liberarFeriadoNaGrade(diaSelecionado)}>Marcar que tem aula mesmo assim</button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p style={{ fontSize: FS.sm, fontWeight: 600, color: encontroPorData(diaSelecionado) ? GOLD : TEXT_MUTED, margin: "0 0 10px" }}>
+                          {encontroPorData(diaSelecionado) ? "✓ Encontro já gerado" : "Encontro ainda não gerado"}
+                        </p>
+                        <div style={styles.formRow}>
+                          <label style={styles.label}>Tema</label>
+                          <input
+                            style={styles.input}
+                            value={formDia.tema}
+                            onChange={(e) => setFormDia({ ...formDia, tema: e.target.value })}
+                            placeholder="Ex: A Igreja, Povo de Deus"
+                            autoFocus
+                          />
+                        </div>
+                        <div style={styles.formRow}>
+                          <label style={styles.label}>Local (opcional)</label>
+                          <input style={styles.input} value={formDia.local} onChange={(e) => setFormDia({ ...formDia, local: e.target.value })} />
+                        </div>
+                        <div style={styles.formRow}>
+                          <label style={styles.label}>Observações (opcional)</label>
+                          <textarea
+                            style={{ ...styles.input, minHeight: 60 }}
+                            value={formDia.observacoes}
+                            onChange={(e) => setFormDia({ ...formDia, observacoes: e.target.value })}
+                          />
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, flexWrap: "wrap", gap: 8 }}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            {encontroPorData(diaSelecionado) && (
+                              <button style={styles.iconButton} onClick={removerEncontroDaGrade} title="Remover encontro"><Trash2 size={13} /></button>
+                            )}
+                            <button style={styles.linkButton} onClick={marcarSemAulaNaGrade}>Marcar como sem aula</button>
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button style={styles.cancelButton} onClick={() => setDiaSelecionado(null)}><X size={14} /> Cancelar</button>
+                            <button style={styles.saveButton} disabled={!formDia.tema.trim()} onClick={salvarDiaGrade}>Salvar</button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
