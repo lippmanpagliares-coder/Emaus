@@ -68,6 +68,21 @@ export default async function handler(req, res) {
         // tenta o próximo formato de link, ou o dia anterior
       }
     }
+
+    // A fonte principal ainda não publicou a edição de hoje — antes de voltar pra uma edição
+    // de dias atrás, tenta uma segunda fonte (Canção Nova) que costuma estar em dia. Só faz
+    // sentido pra data de hoje: se ela também não tiver, segue voltando dias na fonte principal.
+    if (offset === 0) {
+      try {
+        const resultado = await tentarCancaoNova(dataChave);
+        if (resultado) {
+          res.status(200).json(resultado);
+          return;
+        }
+      } catch {
+        // segue pro próximo dia na fonte principal
+      }
+    }
   }
 
   res.status(502).json({ error: "Fonte ainda não publicou nenhuma edição recente" });
@@ -107,5 +122,41 @@ async function tentarBuscar(url, dataChave, dataFonte) {
     santoDoDia: santoDoDia($),
     fonte: url,
     fonteLabel: "Minha Biblioteca Católica",
+  };
+}
+
+const MAPA_TIPO_CANCAO_NOVA = { "1ª Leitura": "Primeira Leitura", "2ª Leitura": "Segunda Leitura" };
+
+async function tentarCancaoNova(dataChave) {
+  const url = "https://liturgia.cancaonova.com/pb/";
+  const resposta = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; EmausApp/1.0)" },
+  });
+  if (!resposta.ok) return null;
+
+  const html = await resposta.text();
+  const $ = cheerio.load(html);
+
+  const leituras = [];
+  $("#leituraTab li").each((_, li) => {
+    const tipoOriginal = $(li).find(".tipo-titulo").first().text().trim();
+    const referencia = $(li).find(".referencia").first().text().trim();
+    if (tipoOriginal && referencia) {
+      leituras.push({ tipo: MAPA_TIPO_CANCAO_NOVA[tipoOriginal] || tipoOriginal, referencia });
+    }
+  });
+  // Sem leituras extraídas, a página não veio no formato esperado — melhor não confiar nela.
+  if (leituras.length === 0) return null;
+
+  return {
+    dataChave,
+    dataFonte: dataChave,
+    // Essa fonte não separa "semana litúrgica" nem "santo do dia" da mesma forma que a
+    // principal — deixa em branco em vez de arriscar mostrar algo incorreto ou incompleto.
+    semanaLiturgica: "",
+    leituras,
+    santoDoDia: "",
+    fonte: url,
+    fonteLabel: "Liturgia Diária — Canção Nova",
   };
 }
